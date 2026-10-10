@@ -35,28 +35,62 @@ def blob(repo, path, line=None, sha="main"):
     url = f"https://github.com/{repo}/blob/{sha}/{path}"
     return url + (f"#L{line}" if line and not path.endswith(".ipynb") else "")
 
+ICONS = {
+    "modules": '<path d="M12 3 3 8l9 5 9-5-9-5Z"/><path d="m3 13 9 5 9-5"/>',
+    "project": '<path d="M21 8 12 3 3 8v8l9 5 9-5V8Z"/><path d="m3 8 9 5 9-5M12 13v8"/>',
+    "commit": '<circle cx="12" cy="12" r="3.5"/><path d="M3 12h5.5M15.5 12H21"/>',
+    "code": '<path d="m8 7-5 5 5 5M16 7l5 5-5 5"/>',
+    "check": '<rect x="3.5" y="3.5" width="17" height="17" rx="3"/><path d="m8 12 3 3 5-6"/>',
+    "flame": '<path d="M12 21c4 0 7-2.7 7-6.6 0-3.5-2.4-5.6-4-7.4-.3 2-1.3 3.2-2.6 3.8C12.9 7.6 11 5 9 3c.3 3.3-4 5.8-4 11.2C5 18.2 8 21 12 21Z"/>',
+}
+
+
+def icon(name):
+    return (f'<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" '
+            f'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{ICONS[name]}</svg>')
+
 
 # ---------------------------------------------------------------- sections
 
 
 def hero(d):
-    p, t, s = d["program"], d["totals"], d["stats"]
+    p, t = d["program"], d["totals"]
     pct = round(100 * t["topics_covered"] / t["topics_trackable"]) if t["topics_trackable"] else 0
-    week_pct = round(100 * p["week_now"] / p["total_weeks"])
+    total, now = p["total_weeks"], p["week_now"]
+    # progress ring
+    r = 54
+    circ = 2 * 3.14159265 * r
+    ring = (f'<svg class="ring" viewBox="0 0 140 140" role="img" aria-label="{pct}% of hands-on topics covered">'
+            f'<circle cx="70" cy="70" r="{r}" class="ring-track"/>'
+            f'<circle cx="70" cy="70" r="{r}" class="ring-fill" stroke-dasharray="{circ * pct / 100:.1f} {circ:.1f}" '
+            f'transform="rotate(-90 70 70)"/>'
+            f'<text x="70" y="68" class="ring-num">{pct}%</text><text x="70" y="88" class="ring-lab">topics</text></svg>')
+    # journey bar: one segment per module, sized by its scheduled weeks
+    segs = []
+    for m in d["modules"]:
+        w = len(m["weeks"])
+        label = m["id"] if m["id"] != "CAP" else "★"
+        segs.append(f'<div class="seg {m["status"]}" style="flex:{w}" title="{esc(m["id"])} · {esc(m["title"])} · {esc(m["schedule"])}">'
+                    f'<span>{esc(label)}</span></div>')
+    marker = 100 * (now - 0.5) / total
     return f"""
 <header class="hero">
-  <p class="eyebrow">{esc(p['institute'])} · {esc(p['months'])}-month certificate program · learning in public</p>
-  <h1>{esc(p['owner'])}'s progress in the <span>{esc(p['name'])}</span></h1>
-  <p class="lede">This page rebuilds itself every time I push code to my
-  <a href="https://github.com/{esc(p['course_repo'])}">course repo</a>. Each ticked topic links to the code that shows it.</p>
-  <div class="headline">
-    <div class="big"><span class="num">{pct}%</span><span class="lab">of hands-on topics covered</span>
-      <span class="sub">{t['topics_covered']} of {t['topics_trackable']} topics, across {t['modules']} modules</span></div>
-    <div class="timeline" role="img" aria-label="Week {p['week_now']} of {p['total_weeks']}">
-      <div class="tl-head"><span>Program timeline</span><span>Week {p['week_now']} of {p['total_weeks']}</span></div>
-      <div class="bar"><div class="fill" style="width:{week_pct}%"></div></div>
-      <div class="tl-foot"><span>Started {esc(fmt_date(p['start_date']))}</span><span>{week_pct}% of the program's time</span></div>
+  <div class="hero-in">
+    <div class="hero-text">
+      <p class="eyebrow">{esc(p['institute'])} · {esc(p['months'])}-month certificate program · learning in public</p>
+      <h1>{esc(p['name'])}</h1>
+      <p class="who">{esc(p['owner'])}'s live progress, rebuilt from <a href="https://github.com/{esc(p['course_repo'])}">my code</a> on every push.
+      Every ticked topic links to the file that proves it.</p>
+      <div class="pills"><span class="pill">Week {now} of {total}</span><span class="pill">Started {esc(fmt_date(p['start_date']))}</span>
+        <span class="pill live"><span class="dot" aria-hidden="true"></span>Auto-updating</span></div>
     </div>
+    {ring}
+  </div>
+  <div class="journey" aria-label="Program timeline: week {now} of {total}">
+    <div class="segs">{''.join(segs)}</div>
+    <div class="you" style="left:{marker:.2f}%"><span>You are here · week {now}</span></div>
+    <div class="jlegend"><span><i class="k completed"></i>Hands-on done</span><span><i class="k in_progress"></i>In progress</span>
+      <span><i class="k not_started"></i>Not started</span><span class="muted">Segment width = scheduled weeks</span></div>
   </div>
 </header>"""
 
@@ -64,16 +98,31 @@ def hero(d):
 def tiles(d):
     s, t = d["stats"], d["totals"]
     items = [
-        (t["modules_started"], "modules started", f"{t['modules_completed']} with hands-on work done"),
-        (t["projects_built"], "module projects built", "detected from the code"),
-        (s["commits"], "commits", f"on {s['active_days']} active days"),
-        (s["lines_of_code"], "lines of code", f"{s['python_files']} Python files · {s['notebooks']} notebook{'s' if s['notebooks'] != 1 else ''}"),
-        (s["practice_assignments"], "practice assignments", "solved"),
-        (s["longest_streak"], "day best streak", f"current streak: {s['current_streak']} day{'s' if s['current_streak'] != 1 else ''}"),
+        ("modules", t["modules_started"], "modules started", f"{t['modules_completed']} with hands-on work done"),
+        ("project", t["projects_built"], "module projects built", "detected from the code"),
+        ("commit", s["commits"], "commits", f"on {s['active_days']} active days"),
+        ("code", s["lines_of_code"], "lines of code", f"{s['python_files']} Python files · {s['notebooks']} notebook{'s' if s['notebooks'] != 1 else ''}"),
+        ("check", s["practice_assignments"], "practice assignments", "solved"),
+        ("flame", s["longest_streak"], "day best streak", f"current streak: {s['current_streak']} day{'s' if s['current_streak'] != 1 else ''}"),
     ]
-    cells = "".join(f'<div class="tile"><span class="num">{n:,}</span><span class="lab">{esc(l)}</span>'
-                    f'<span class="sub">{esc(sub)}</span></div>' for n, l, sub in items)
+    cells = "".join(f'<div class="tile">{icon(ic)}<span class="num" data-count="{n}">{n:,}</span><span class="lab">{esc(l)}</span>'
+                    f'<span class="sub">{esc(sub)}</span></div>' for ic, n, l, sub in items)
     return f'<section class="tiles" aria-label="Key numbers">{cells}</section>'
+
+
+SHORT = {"M1": "Foundations", "M2": "Models & APIs", "M3": "Apps without frameworks", "M4": "LangChain",
+         "M5": "RAG", "M6": "Agents & MCP", "M7": "LangGraph", "M8": "GenAI tooling", "M9": "Automation",
+         "M10": "Career & portfolio", "CAP": "Capstone"}
+
+
+def stepper(d):
+    out = []
+    for m in d["modules"]:
+        icon_, label = STATUS[m["status"]]
+        name = m["id"] if m["id"] != "CAP" else "★"
+        out.append(f'<li class="step {m["status"]}{" current" if m["scheduled_now"] else ""}" title="{esc(m["title"])}: {label}">'
+                   f'<span class="node">{esc(name)}</span><span class="slabel">{esc(SHORT.get(m["id"], m["title"]))}</span></li>')
+    return "".join(out)
 
 
 def roadmap(d):
@@ -126,6 +175,7 @@ def roadmap(d):
   <p class="note">The program's 10 modules and capstone, from the brochure. A topic is ticked when my code shows it;
   "concept" topics are taught in lectures and can't be read from code. "Hands-on done" means the module's project is
   built and most of its hands-on topics appear in my code.</p>
+  <ol class="stepper" aria-label="Module status overview">{stepper(d)}</ol>
   <div class="modules">{''.join(cards)}</div>
 </section>"""
 
@@ -198,20 +248,25 @@ def project_cards(d):
 
 
 def libraries(d):
-    rows = "".join(f'<li><code>{esc(name)}</code><span class="lcount">{n} file{"s" if n != 1 else ""}</span></li>'
-                   for name, n in d["libraries"])
+    libs = d["libraries"]
+    top = max((n for _, n in libs), default=1)
+    rows = "".join(f'<li><code>{esc(name)}</code><span class="lbar"><span style="width:{100 * n / top:.1f}%"></span></span>'
+                   f'<span class="lcount">{n}</span></li>' for name, n in libs)
+    table = "".join(f"<tr><td>{esc(name)}</td><td>{n}</td></tr>" for name, n in libs)
     return f"""
 <section class="block half" id="libraries">
   <h2>Libraries I've used</h2>
-  <p class="note">Third-party imports across all my code, by number of files.</p>
-  <ul class="liblist">{rows}</ul>
+  <p class="note">Third-party imports across all my code: number of files that use each.</p>
+  <ul class="liblist" role="img" aria-label="Bar chart of files per library">{rows}</ul>
+  <details class="table-view"><summary>Show as a table</summary>
+    <table><thead><tr><th>Library</th><th>Files</th></tr></thead><tbody>{table}</tbody></table></details>
 </section>"""
 
 
 def recent(d):
     repo = d["program"]["course_repo"]
-    rows = "".join(f'<li><a href="https://github.com/{esc(repo)}/commit/{c["sha"]}"><code>{c["sha"][:7]}</code></a>'
-                   f'<span class="msg">{esc(c["subject"])}</span><span class="when">{esc(fmt_date(c["day"]))}</span></li>'
+    rows = "".join(f'<li><span class="cdot" aria-hidden="true"></span><div><span class="msg">{esc(c["subject"])}</span>'
+                   f'<span class="when">{esc(fmt_date(c["day"]))} · <a href="https://github.com/{esc(repo)}/commit/{c["sha"]}"><code>{c["sha"][:7]}</code></a></span></div></li>'
                    for c in d["commits"])
     return f"""
 <section class="block half" id="recent">
@@ -229,10 +284,12 @@ def page(d, generated):
 <title>{esc(title)}</title><meta name="description" content="{esc(desc)}">
 <meta property="og:title" content="{esc(title)}"><meta property="og:description" content="{esc(desc)}">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23256abf'/><path d='M8 22l6-7 4 4 6-9' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/style.css">
 </head><body>
-<main>
 {hero(d)}
+<main>
 {tiles(d)}
 {roadmap(d)}
 {heatmap(d)}
