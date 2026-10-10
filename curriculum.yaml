@@ -343,6 +343,6 @@ projects:
   02_genai_program/week_02/03_capstone:
     title: Streamlit chat assistant with memory
     description: Web chat UI with conversation history, routing to OpenAI or Gemini from config.
-  02_genai_program/live_sessions/01_call_transcript_qa:
+  03_live_sessions/01_call_transcript_qa:
     title: Call-transcript classification and QA evaluation
     description: Live-session project. A LangChain pipeline that classifies customer-support calls and scores tone, resolution and knowledge accuracy with structured outputs.
