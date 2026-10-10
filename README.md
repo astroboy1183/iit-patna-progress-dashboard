@@ -8,8 +8,8 @@ A public dashboard of my progress in IIT Patna's **Certificate Program in Genera
 
 ## What it shows
 
-- **Curriculum roadmap:** the program's 10 modules and capstone, from the brochure. Each hands-on topic is ticked when my code shows it (for example, `import streamlit` ticks "Simple UI with Streamlit or Gradio") and links to the file that proves it. Concept-only topics are listed but not scored.
-- **Progress:** hands-on topics covered, modules started, module projects built, and where I am on the program's 26-week timeline.
+- **Curriculum roadmap:** the program's 10 modules and capstone, from the brochure. The whole course repo is read: a topic is ticked when my code uses it (for example, `import streamlit` ticks "Simple UI with Streamlit or Gradio") or, for theory topics, when my lecture notes cover it, and every tick links to the file and line that proves it. Click a module on the timeline or stepper for a pop-up with its details.
+- **Progress:** topics covered, modules started, module projects built, lecture notes, and where I am on the program's 26-week timeline. The stat cards flip over for a breakdown.
 - **Activity:** commits per day as a heatmap, streaks, recent commits.
 - **Projects and libraries:** every folder with its own `requirements.txt`, and the third-party libraries used across my code.
 
@@ -23,7 +23,7 @@ An hourly scheduled run is a fallback, so the page stays current even if the eve
 
 ## How progress is detected
 
-[`curriculum.yaml`](curriculum.yaml) maps each topic to evidence rules:
+Every tracked file in the course repo is read and given a kind: code (`.py` files and notebook code cells), notes (markdown in a `notes/` folder), docs (other markdown and notebook markdown cells), dependencies, config and data. [`curriculum.yaml`](curriculum.yaml) maps each topic to evidence rules:
 
 | Rule | Matches when |
 |---|---|
@@ -33,10 +33,17 @@ An hourly scheduled run is a fallback, so the page stays current even if the eve
 | `providers` | one file imports at least N of the listed modules (for "compare providers" topics) |
 | `count` | one file matches a regex at least N times |
 | `same_file` | all of the listed rules match within the same file |
+| `headings` | a markdown heading in lecture notes, docs, READMEs or notebook markdown cells matches a regex |
+
+Code rules only look at code, so prose that mentions a library never counts as using it, and `headings` only looks at headings, not body text (the roadmap lecture mentions most of the curriculum in passing). Evidence from code is listed before notes, and notes before other docs.
 
 A module is **Hands-on done** when its project is detected and at least 60% of its trackable topics are covered; **In progress** when anything is detected.
 
-The program start date defaults to the first commit in the course repo; set `program.start_date` in `curriculum.yaml` to change it.
+The program start date defaults to the first commit in the course repo; set `program.start_date` in `curriculum.yaml` to change it. The current week is never earlier than the highest `week_NN` folder in the repo.
+
+## Look and feel
+
+Three colour themes (Aurora, Sunset, Ocean), each with light and dark variants, plus ambient light, a starfield hero, flip cards, pop-ups and scroll-in animations. The buttons in the bottom-left corner switch the colour theme, light/dark mode and animations. Animations follow the system's reduced-motion setting unless switched on, and only start once the browser is shown to run them, so the page is always readable without them.
 
 ## Run it locally
 

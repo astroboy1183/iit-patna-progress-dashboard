@@ -5,13 +5,15 @@ Usage: python dashboard/build.py --course <path to course repo> --out site
 
 import argparse
 import datetime as dt
+import hashlib
 import html
 import json
 import re
 import shutil
+from collections import Counter
 from pathlib import Path
 
-from collect import collect
+from collect import collect, humanize
 
 ROOT = Path(__file__).resolve().parent.parent
 STATUS = {
@@ -43,6 +45,12 @@ ICONS = {
     "code": '<path d="m8 7-5 5 5 5M16 7l5 5-5 5"/>',
     "check": '<rect x="3.5" y="3.5" width="17" height="17" rx="3"/><path d="m8 12 3 3 5-6"/>',
     "notes": '<path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5v-15Z"/><path d="M4 20.5A2.5 2.5 0 0 1 6.5 18H20v3H6.5"/><path d="M8 7.5h8M8 11h6"/>',
+    "flip": '<path d="M3 12a9 9 0 0 1 15.5-6.2L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16"/><path d="M3 21v-5h5"/>',
+    "sun": '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+    "moon": '<path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z"/>',
+    "auto": '<circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17a8.5 8.5 0 0 0 0-17Z" fill="currentColor"/>',
+    "sparkle": '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3Z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15Z"/>',
+    "up": '<path d="M12 19V5M5 12l7-7 7 7"/>',
     "flame": '<path d="M12 21c4 0 7-2.7 7-6.6 0-3.5-2.4-5.6-4-7.4-.3 2-1.3 3.2-2.6 3.8C12.9 7.6 11 5 9 3c.3 3.3-4 5.8-4 11.2C5 18.2 8 21 12 21Z"/>',
 }
 
@@ -63,21 +71,25 @@ def hero(d):
     r = 54
     circ = 2 * 3.14159265 * r
     ring = (f'<svg class="ring" viewBox="0 0 140 140" role="img" aria-label="{pct}% of curriculum topics covered">'
+            f'<defs><linearGradient id="ringg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff"/>'
+            f'<stop offset="1" style="stop-color:var(--glow)"/></linearGradient></defs>'
             f'<circle cx="70" cy="70" r="{r}" class="ring-track"/>'
             f'<circle cx="70" cy="70" r="{r}" class="ring-fill" stroke-dasharray="{circ * pct / 100:.1f} {circ:.1f}" '
             f'transform="rotate(-90 70 70)"/>'
             f'<text x="70" y="68" class="ring-num">{pct}%</text><text x="70" y="88" class="ring-lab">topics</text></svg>')
-    # journey bar: one segment per module, sized by its scheduled weeks
+    # journey bar: one segment per module, sized by its scheduled weeks; each opens the module pop-up
     segs = []
     for i, m in enumerate(d["modules"]):
         w = len(m["weeks"])
         label = m["id"] if m["id"] != "CAP" else "★"
-        segs.append(f'<div class="seg {m["status"]}" style="flex:{w};--i:{i}" title="{esc(m["id"])} · {esc(m["title"])} · {esc(m["schedule"])}">'
-                    f'<span>{esc(label)}</span></div>')
+        tip = f'{m["id"]} · {m["title"]} · {m["schedule"]} · {m["covered"]}/{m["trackable"]} topics · {STATUS[m["status"]][1]}'
+        segs.append(f'<button type="button" class="seg {m["status"]}" style="flex:{w};--i:{i}" data-module="{esc(m["id"])}" '
+                    f'data-tip="{esc(tip)}" aria-label="{esc(tip)}. Open details"><span>{esc(label)}</span></button>')
     marker = 100 * (now - 0.5) / total
     return f"""
 <header class="hero">
-  <div class="blob b1" aria-hidden="true"></div><div class="blob b2" aria-hidden="true"></div><div class="blob b3" aria-hidden="true"></div>
+  <div class="fx" aria-hidden="true"><div class="aurora"></div><div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div></div>
+  <canvas class="sky" aria-hidden="true"></canvas>
   <div class="hero-in">
     <div class="hero-text">
       <p class="eyebrow">{esc(p['institute'])} · {esc(p['months'])}-month certificate program · learning in public</p>
@@ -93,24 +105,50 @@ def hero(d):
     <div class="segs">{''.join(segs)}</div>
     <div class="you" style="left:{marker:.2f}%"><span>You are here · week {now}</span></div>
     <div class="jlegend"><span><i class="k completed"></i>Hands-on done</span><span><i class="k in_progress"></i>In progress</span>
-      <span><i class="k not_started"></i>Not started</span><span class="muted">Segment width = scheduled weeks</span></div>
+      <span><i class="k not_started"></i>Not started</span><span class="muted">Segment width = scheduled weeks · click one for details</span></div>
   </div>
 </header>"""
 
 
+def back_rows(rows, foot=""):
+    lis = "".join(f"<li><span>{esc(a)}</span><b>{esc(b)}</b></li>" for a, b in rows)
+    return f'<ul class="bl">{lis}</ul>' + (f'<p class="bfoot">{esc(foot)}</p>' if foot else "")
+
+
 def tiles(d):
-    s, t = d["stats"], d["totals"]
+    s, t, mods = d["stats"], d["totals"], d["modules"]
+    plural = lambda n, w: f"{n} {w}{'s' if n != 1 else ''}"
+    started = [m for m in mods if m["status"] != "not_started"]
+    nxt = next((m for m in mods if m["status"] == "not_started"), None)
+    built = [m for m in mods if m["project"]["evidence"]]
+    by_week = Counter(n["week"] for n in d["notes"])
+    latest = d["notes"][-1]["title"].split("·", 1)[-1].strip() if d["notes"] else ""
+    practice = [(re.sub(r"^\d+_|_practice$", "", n).replace("_", " "), f"#{n.split('_')[0]}") for n in reversed(d["practice"])]
+    projs = sorted(d["projects"], key=lambda p: -p["loc"])
     items = [
-        ("modules", t["modules_started"], "modules started", f"{t['modules_completed']} with hands-on work done"),
-        ("project", t["projects_built"], "module projects built", "detected from the code"),
-        ("commit", s["commits"], "commits", f"on {s['active_days']} active days · best streak {s['longest_streak']} day{'s' if s['longest_streak'] != 1 else ''}"),
-        ("code", s["lines_of_code"], "lines of code", f"{s['python_files']} Python files · {s['notebooks']} notebook{'s' if s['notebooks'] != 1 else ''}"),
-        ("check", s["practice_assignments"], "practice assignments", "solved"),
-        ("notes", s["lecture_notes"], "lecture notes", f"{s['notes_words']:,} words · cover {t['topics_from_notes']} theory topics"),
+        ("modules", t["modules_started"], "modules started", f"{t['modules_completed']} with hands-on work done", "Where I am",
+         back_rows([(SHORT.get(m["id"], m["title"]), f'{m["covered"]}/{m["trackable"]}') for m in started],
+                   f'Next up: {nxt["id"]} · {SHORT.get(nxt["id"], nxt["title"])}' if nxt else "All modules started")),
+        ("project", t["projects_built"], "module projects built", "detected from the code", "Projects detected",
+         back_rows([(SHORT.get(m["id"], m["title"]), m["id"]) for m in built])),
+        ("commit", s["commits"], "commits", f"on {s['active_days']} active days · best streak {plural(s['longest_streak'], 'day')}", "Activity",
+         back_rows([("Active days", s["active_days"]), ("Best streak", plural(s["longest_streak"], "day")),
+                    ("Current streak", plural(s["current_streak"], "day")), ("Started", fmt_date(s["first_commit"])),
+                    ("Latest", fmt_date(s["last_commit"]))])),
+        ("code", s["lines_of_code"], "lines of code", f"{s['python_files']} Python files · {plural(s['notebooks'], 'notebook')}", "Lines by project",
+         back_rows([(humanize(p["path"].split("/")[-1]), f'{p["loc"]:,}') for p in projs[:5]])),
+        ("check", s["practice_assignments"], "practice assignments", "solved", "Latest practice", back_rows(practice[:5])),
+        ("notes", s["lecture_notes"], "lecture notes", f"{s['notes_words']:,} words · cover {t['topics_from_notes']} theory topics", "Notes by week",
+         back_rows([(f"Week {w}", plural(n, "lecture")) for w, n in sorted(by_week.items(), key=lambda x: x[0] or 0)],
+                   f"Latest: {latest}" if latest else "")),
     ]
-    cells = "".join(f'<div class="tile" style="--i:{k}">{icon(ic)}<span class="num" data-count="{n}">{n:,}</span><span class="lab">{esc(l)}</span>'
-                    f'<span class="sub">{esc(sub)}</span></div>' for k, (ic, n, l, sub) in enumerate(items))
-    return f'<section class="tiles" aria-label="Key numbers">{cells}</section>'
+    cells = "".join(
+        f'<div class="tile" style="--i:{k}" tabindex="0" role="group" aria-label="{esc(l)}">'
+        f'<div class="inner"><div class="face front spot">{icon(ic)}<span class="num" data-count="{n}">{n:,}</span>'
+        f'<span class="lab">{esc(l)}</span><span class="sub">{esc(sub)}</span><span class="fliphint">{icon("flip")}</span></div>'
+        f'<div class="face back"><h4>{esc(bt)}</h4>{back}</div></div></div>'
+        for k, (ic, n, l, sub, bt, back) in enumerate(items))
+    return (f'<section class="tiles" aria-label="Key numbers. Hover, focus or tap a card to flip it for details.">{cells}</section>')
 
 
 EV_KIND = {"notes": "notes", "docs": "docs", "readme": "README"}
@@ -134,8 +172,10 @@ def stepper(d):
     for m in d["modules"]:
         icon_, label = STATUS[m["status"]]
         name = m["id"] if m["id"] != "CAP" else "★"
-        out.append(f'<li class="step {m["status"]}{" current" if m["scheduled_now"] else ""}" title="{esc(m["title"])}: {label}">'
-                   f'<span class="node">{esc(name)}</span><span class="slabel">{esc(SHORT.get(m["id"], m["title"]))}</span></li>')
+        tip = f'{m["title"]} · {m["covered"]}/{m["trackable"]} topics · {label}'
+        out.append(f'<li class="step {m["status"]}{" current" if m["scheduled_now"] else ""}" style="--k:{len(out)}">'
+                   f'<button type="button" class="stepbtn" data-module="{esc(m["id"])}" data-tip="{esc(tip)}" aria-label="{esc(tip)}. Open details">'
+                   f'<span class="node">{esc(name)}</span><span class="slabel">{esc(SHORT.get(m["id"], m["title"]))}</span></button></li>')
     return "".join(out)
 
 
@@ -151,12 +191,12 @@ def roadmap(d):
                 ev = tp["evidence"][0]
                 more = f' <span class="more">+{len(tp["evidence"]) - 1} more</span>' if len(tp["evidence"]) > 1 else ""
                 kind = "" if ev["kind"] == "code" else f'<span class="tag k-{ev["kind"]}">{EV_KIND.get(ev["kind"], ev["kind"])}</span>'
-                topics.append(f'<li class="yes"><span class="mark" aria-hidden="true">✓</span><span class="tname">{esc(tp["name"])}</span>'
+                topics.append(f'<li class="yes" style="--k:{len(topics)}"><span class="mark" aria-hidden="true">✓</span><span class="tname">{esc(tp["name"])}</span>'
                               f'<span class="evw">{kind}<a class="ev" href="{esc(blob(repo, ev["path"], ev["line"], sha))}" title="{esc(ev["path"])}">{esc(ev_label(ev))}</a>{more}</span></li>')
             elif tp["trackable"]:
-                topics.append(f'<li class="no"><span class="mark" aria-hidden="true">○</span><span class="tname">{esc(tp["name"])}</span></li>')
+                topics.append(f'<li class="no" style="--k:{len(topics)}"><span class="mark" aria-hidden="true">○</span><span class="tname">{esc(tp["name"])}</span></li>')
             else:
-                topics.append(f'<li class="concept"><span class="mark" aria-hidden="true">·</span><span class="tname">{esc(tp["name"])}</span>'
+                topics.append(f'<li class="concept" style="--k:{len(topics)}"><span class="mark" aria-hidden="true">·</span><span class="tname">{esc(tp["name"])}</span>'
                               f'<span class="evw"><span class="tag">concept</span></span></li>')
         pr = m["project"]
         if pr["name"]:
@@ -174,7 +214,7 @@ def roadmap(d):
         now = '<span class="now">Scheduled now</span>' if m["scheduled_now"] else ""
         open_attr = " open" if m["status"] != "not_started" or m["scheduled_now"] else ""
         cards.append(f"""
-<details class="module {m['status']}"{open_attr}>
+<details class="module {m['status']}" data-id="{esc(m['id'])}" data-pct="{pct}" style="--k:{len(cards)}"{open_attr}>
   <summary>
     <span class="mid">{esc(m['id'] if m['id'] != 'CAP' else '★')}</span>
     <span class="mtitle">{esc(m['title'])}<span class="sched">{esc(m['schedule'])}</span></span>
@@ -247,10 +287,10 @@ def heatmap(d):
 def project_cards(d):
     repo = d["program"]["course_repo"]
     cards = []
-    for pr in d["projects"]:
+    for k, pr in enumerate(d["projects"]):
         libs = "".join(f"<code>{esc(l)}</code>" for l in pr["libraries"]) or '<span class="muted">standard library only</span>'
         span = fmt_date(pr["first"]) + (f" – {fmt_date(pr['last'])}" if pr["last"] != pr["first"] else "")
-        cards.append(f"""<a class="pcard" href="https://github.com/{esc(repo)}/tree/main/{esc(pr['path'])}">
+        cards.append(f"""<a class="pcard spot" style="--k:{k}" href="https://github.com/{esc(repo)}/tree/main/{esc(pr['path'])}">
   <h3>{esc(pr['title'])}</h3><p class="path">{esc(pr['path'])}/</p>
   {f'<p>{esc(pr["description"])}</p>' if pr["description"] else ''}
   <p class="meta">{pr['files']} code file{'s' if pr['files'] != 1 else ''} · {pr['loc']:,} lines · {esc(span)}</p>
@@ -266,8 +306,8 @@ def project_cards(d):
 def libraries(d):
     libs = d["libraries"]
     top = max((n for _, n in libs), default=1)
-    rows = "".join(f'<li><code>{esc(name)}</code><span class="lbar"><span style="width:{100 * n / top:.1f}%"></span></span>'
-                   f'<span class="lcount">{n}</span></li>' for name, n in libs)
+    rows = "".join(f'<li style="--k:{k}"><code>{esc(name)}</code><span class="lbar"><span style="width:{100 * n / top:.1f}%"></span></span>'
+                   f'<span class="lcount">{n}</span></li>' for k, (name, n) in enumerate(libs))
     table = "".join(f"<tr><td>{esc(name)}</td><td>{n}</td></tr>" for name, n in libs)
     return f"""
 <section class="block half" id="libraries">
@@ -281,9 +321,9 @@ def libraries(d):
 
 def recent(d):
     repo = d["program"]["course_repo"]
-    rows = "".join(f'<li><span class="cdot" aria-hidden="true"></span><div><span class="msg">{esc(c["subject"])}</span>'
+    rows = "".join(f'<li style="--k:{k}"><span class="cdot" aria-hidden="true"></span><div><span class="msg">{esc(c["subject"])}</span>'
                    f'<span class="when">{esc(fmt_date(c["day"]))} · <a href="https://github.com/{esc(repo)}/commit/{c["sha"]}"><code>{c["sha"][:7]}</code></a></span></div></li>'
-                   for c in d["commits"])
+                   for k, c in enumerate(d["commits"]))
     return f"""
 <section class="block half" id="recent">
   <h2>Recent commits</h2>
@@ -291,7 +331,18 @@ def recent(d):
 </section>"""
 
 
-def page(d, generated):
+def toast(d):
+    if not d["commits"]:
+        return ""
+    c, repo = d["commits"][0], d["program"]["course_repo"]
+    return (f'<div class="toast" id="toast" role="status" hidden data-when="{esc(c["date"])}">'
+            f'<span class="tdot" aria-hidden="true"></span><div class="tbody"><b>Latest push <span class="ago">{esc(fmt_date(c["day"]))}</span></b>'
+            f'<span class="tmsg">{esc(c["subject"])}</span>'
+            f'<a href="https://github.com/{esc(repo)}/commit/{c["sha"]}"><code>{c["sha"][:7]}</code> on GitHub</a></div>'
+            f'<button type="button" class="tclose" aria-label="Dismiss">×</button><i class="tbar" aria-hidden="true"></i></div>')
+
+
+def page(d, generated, ver):
     p = d["program"]
     title = f"{p['owner']} · IIT Patna GenAI program progress"
     desc = f"Live progress of {p['owner']} in IIT Patna's {p['name']}, rebuilt from code on every push."
@@ -302,8 +353,12 @@ def page(d, generated):
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23256abf'/><path d='M8 22l6-7 4 4 6-9' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/style.css">
+<script>try{{var r=document.documentElement,t=localStorage.getItem("theme"),c=localStorage.getItem("palette");
+if(t==="light"||t==="dark")r.setAttribute("data-theme",t);if(c==="ocean"||c==="sunset"||c==="aurora")r.setAttribute("data-palette",c)}}catch(e){{}}</script>
+<link rel="stylesheet" href="assets/style.css?v={ver['style.css']}">
 </head><body>
+<div class="sprog" aria-hidden="true"></div>
+<div class="amb" aria-hidden="true"><i></i><i></i><i></i></div>
 {hero(d)}
 <main>
 {tiles(d)}
@@ -320,7 +375,15 @@ def page(d, generated):
 </footer>
 </main>
 <div id="tip" class="tip" role="tooltip" hidden></div>
-<script src="assets/app.js"></script>
+{toast(d)}
+<div class="dock" role="group" aria-label="Display settings">
+  <button type="button" class="dbtn" id="palette-btn" aria-label="Colour theme: Aurora"><span class="swatch" aria-hidden="true"></span></button>
+  <button type="button" class="dbtn" id="theme-btn" aria-label="Theme: automatic">{icon("auto")}{icon("sun")}{icon("moon")}</button>
+  <button type="button" class="dbtn" id="motion-btn" aria-pressed="true" aria-label="Animations">{icon("sparkle")}</button>
+  <button type="button" class="dbtn" id="top-btn" aria-label="Back to top">{icon("up")}</button>
+</div>
+<dialog id="modal" class="modal" aria-labelledby="modal-title"><div class="mcontent"></div></dialog>
+<script src="assets/app.js?v={ver['app.js']}"></script>
 </body></html>"""
 
 
@@ -336,10 +399,13 @@ def main():
     if out.exists():
         shutil.rmtree(out)
     (out / "assets").mkdir(parents=True)
+    ver = {}
     for f in ("style.css", "app.js"):
-        shutil.copy(ROOT / "dashboard" / "static" / f, out / "assets" / f)
+        src = ROOT / "dashboard" / "static" / f
+        shutil.copy(src, out / "assets" / f)
+        ver[f] = hashlib.sha256(src.read_bytes()).hexdigest()[:10]  # cache-buster: changes whenever the file does
     generated = dt.datetime.now(dt.timezone(dt.timedelta(hours=5, minutes=30))).strftime("%d %b %Y, %H:%M IST")
-    (out / "index.html").write_text(page(data, generated))
+    (out / "index.html").write_text(page(data, generated, ver))
     (out / "data.json").write_text(json.dumps(data, indent=1, ensure_ascii=False))
     (out / ".nojekyll").write_text("")
     t = data["totals"]

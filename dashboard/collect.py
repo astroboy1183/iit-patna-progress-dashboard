@@ -370,7 +370,10 @@ def collect(repo, curriculum_path, today=None):
     current_streak, longest_streak = streaks(days, today)
     ext = Counter(PurePosixPath(p).suffix or PurePosixPath(p).name for p in all_paths)
     kinds = Counter(f.kind for f in files)
-    notes = [f for f in files if f.kind == "notes"]
+    notes = sorted((f for f in files if f.kind == "notes"), key=lambda f: f.rel)
+    week_of = lambda rel: next((int(w) for w in re.findall(r"(?:^|/)week[_-]?(\d+)(?=/)", rel)), None)
+    practice = sorted((PurePosixPath(p).stem for p in all_paths if "_practice" in PurePosixPath(p).stem and p.endswith(".py")),
+                      key=lambda n: int(m.group()) if (m := re.match(r"\d+", n)) else 0)
     all_topics = [t for m in modules for t in m["topics"]]
     head = git(repo, "rev-parse", "HEAD").strip() if commit_list else ""
 
@@ -407,6 +410,9 @@ def collect(repo, curriculum_path, today=None):
         "activity": dict(sorted(per_day.items())),
         "commits": commit_list[:10],
         "projects": projects(repo, all_paths, sources, cur.get("projects", {})),
+        "notes": [{"path": f.rel, "week": week_of(f.rel), "words": f.words,
+                   "title": f.headings[0][1] if f.headings else PurePosixPath(f.rel).stem} for f in notes],
+        "practice": practice,
         "libraries": lib_counter.most_common(),
         "head": head,
     }
