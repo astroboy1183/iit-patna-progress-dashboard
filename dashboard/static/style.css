@@ -343,7 +343,7 @@ main { max-width: 1120px; margin: 0 auto; padding: 0 24px 64px; position: relati
     radial-gradient(900px 400px at 85% -10%, color-mix(in srgb, var(--g1) 35%, transparent), transparent 60%),
     radial-gradient(600px 300px at 0% 110%, color-mix(in srgb, var(--g1) 35%, transparent), transparent 60%),
     linear-gradient(135deg, var(--hero-1), var(--hero-2) 60%, var(--hero-3));
-  padding: 56px 24px 88px;
+  padding: calc(var(--bar-h) + 40px) 24px 88px;
 }
 .hero::after {
   content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .18;
@@ -427,7 +427,7 @@ main { max-width: 1120px; margin: 0 auto; padding: 0 24px 64px; position: relati
 .block { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 24px 26px; margin-top: 22px; }
 .block h2 { font-size: 22px; letter-spacing: -.015em; margin: 0 0 4px; }
 .note { color: var(--ink-3); font-size: 14px; margin: 0 0 18px; max-width: 780px; }
-.block, .mpanel { scroll-margin-top: 72px; }
+.block, .mpanel, .mtabs-wrap { scroll-margin-top: calc(var(--bar-h) + 16px); }
 .two { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
 
 /* ---------- Roadmap: overview table + tabbed topic tables ---------- */
@@ -595,14 +595,21 @@ footer { margin-top: 40px; color: var(--ink-3); font-size: 13px; text-align: cen
   transform: scaleX(var(--p, 0)); background: linear-gradient(90deg, var(--g3), var(--g1) 50%, var(--g2));
 }
 
-/* compact header: slides in when scrolling back up past the hero */
+/* top bar: always there. Over the hero it's see-through with white text; once you scroll it turns solid. */
+:root { --bar-h: 52px; }
 .minibar {
-  position: fixed; top: 0; left: 0; right: 0; z-index: 55; transform: translateY(-110%); visibility: hidden;
-  transition: transform .45s cubic-bezier(.3, 1.2, .5, 1), visibility 0s .45s;
+  position: fixed; top: 0; left: 0; right: 0; z-index: 55; color: var(--ink);
   background: var(--glass-solid); border-bottom: 1px solid var(--glass-border); box-shadow: 0 10px 30px rgba(16, 24, 40, .12);
+  transition: background-color .35s, border-color .35s, box-shadow .35s, color .35s;
 }
-.minibar.show { transform: none; visibility: visible; transition: transform .45s cubic-bezier(.3, 1.2, .5, 1), visibility 0s; }
-.mb-in { max-width: 1120px; margin: 0 auto; padding: 8px 24px; display: flex; align-items: center; gap: 18px; }
+.minibar.top { background-color: transparent; border-bottom-color: transparent; box-shadow: none; color: #fff; }
+.minibar.top .mb-brand, .minibar.top .mb-nav a { color: #fff; }
+.minibar.top .mb-brand small { color: rgba(255, 255, 255, .75); }
+.minibar.top .mb-ring .t { stroke: rgba(255, 255, 255, .25); }
+.minibar.top .mb-ring .f { stroke: #fff; }
+.minibar.top .mb-nav a:hover { background: rgba(255, 255, 255, .14); }
+.mb-brand:focus-visible, .mb-nav a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 8px; }
+.mb-in { max-width: 1120px; height: var(--bar-h); margin: 0 auto; padding: 0 24px; display: flex; align-items: center; gap: 18px; }
 .mb-brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--ink); min-width: 0; flex: none; }
 .mb-brand b { display: block; font-size: 14px; white-space: nowrap; }
 .mb-brand small { display: block; font-size: 12px; color: var(--ink-3); white-space: nowrap; }
@@ -668,7 +675,7 @@ footer { margin-top: 40px; color: var(--ink-3); font-size: 13px; text-align: cen
 
 /* Frosted glass only where it's cheap and reliable (desktop pointers); on phones it can flicker while scrolling. */
 @media (hover: hover) and (pointer: fine) {
-  .dbtn, .toast, .minibar { background: var(--glass); backdrop-filter: blur(14px) saturate(1.3); -webkit-backdrop-filter: blur(14px) saturate(1.3); }
+  .dbtn, .toast, .minibar:not(.top) { background: var(--glass); backdrop-filter: blur(14px) saturate(1.3); -webkit-backdrop-filter: blur(14px) saturate(1.3); }
 }
 
 /* module pop-up */
@@ -914,7 +921,7 @@ footer { margin-top: 40px; color: var(--ink-3); font-size: 13px; text-align: cen
 }
 
 @media (max-width: 860px) {
-  .hero { padding: 36px 16px 76px; }
+  .hero { padding: calc(var(--bar-h) + 24px) 16px 76px; }
   .hero-in { flex-direction: column-reverse; align-items: flex-start; gap: 20px; }
   .ring { width: 130px; height: 130px; }
   .seg span { display: none; }
@@ -922,10 +929,14 @@ footer { margin-top: 40px; color: var(--ink-3); font-size: 13px; text-align: cen
   .c-weeks, .c-proj { display: none; }
   .mname small { display: block; }
   .mb-brand small { display: none; }
-  .mb-in { padding: 8px 12px; gap: 10px; }
+  .mb-in { padding: 0 12px; gap: 10px; }
   .aurora { inset: -25%; }
 }
 @media (max-width: 600px) {
+  .mb-long { display: none; }
+  .mb-in { gap: 6px; }
+  .mb-nav { -webkit-mask-image: linear-gradient(90deg, #000 85%, transparent); mask-image: linear-gradient(90deg, #000 85%, transparent); padding-right: 24px; }
+  .mb-nav a { padding: 6px 10px; }
   /* overview rows become two lines: module + status, then the progress bar */
   .mtable thead { display: none; }
   .mtable tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 10px; align-items: center; padding: 11px 12px 11px 14px; border-top: 1px solid var(--border); }

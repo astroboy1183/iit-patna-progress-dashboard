@@ -43,7 +43,7 @@ The program start date defaults to the first commit in the course repo; set `pro
 
 ## Look and feel
 
-Three colour themes (Aurora, Sunset, Ocean), each with light and dark variants, plus ambient light, a starfield hero, flip cards, pop-ups, a compact header that appears when scrolling back up, and scroll-linked effects that play forward when scrolling down and rewind when scrolling up (in browsers with scroll-driven animations; others get one-time fade-ins). The buttons in the bottom-left corner switch the colour theme, light/dark mode and animations. Animations follow the system's reduced-motion setting unless switched on, and only start once the browser is shown to run them, so the page is always readable without them. Moving layers only animate transform and opacity and don't resize when a phone's address bar shows or hides, to avoid flicker on mobile.
+Three colour themes (Aurora, Sunset, Ocean), each with light and dark variants, plus ambient light, a starfield hero, flip cards, pop-ups, a top bar with progress and section links that is always visible (see-through over the header, solid once you scroll), and scroll-linked effects that play forward when scrolling down and rewind when scrolling up (in browsers with scroll-driven animations; others get one-time fade-ins). The buttons in the bottom-left corner switch the colour theme, light/dark mode and animations. Animations follow the system's reduced-motion setting unless switched on, and only start once the browser is shown to run them, so the page is always readable without them. Moving layers only animate transform and opacity and don't resize when a phone's address bar shows or hides, to avoid flicker on mobile.
 
 ## Run it locally
 

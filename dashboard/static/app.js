@@ -52,7 +52,7 @@
   }
 
   // ------------------------------------------------------------ scroll progress + back to top
-  var sprog = $(".sprog"), topBtn = $("#top-btn"), dock = $(".dock"), minibar = $(".minibar"), heroEl = $(".hero");
+  var sprog = $(".sprog"), topBtn = $("#top-btn"), dock = $(".dock"), minibar = $(".minibar");
   var ticking = false, lastY = window.scrollY, dirY = 0;
   function onScroll() {
     ticking = false;
@@ -62,8 +62,7 @@
     // direction with a little hysteresis, so small jiggles (and iOS bounce) don't toggle things
     var dy = y - lastY;
     if (Math.abs(dy) > 6) { dirY = dy > 0 ? 1 : -1; lastY = y; }
-    var pastHero = heroEl ? y > heroEl.offsetHeight - 60 : y > 400;
-    if (minibar) minibar.classList.toggle("show", pastHero && dirY < 0);
+    if (minibar) minibar.classList.toggle("top", y < 24);
     if (dock) dock.classList.toggle("away", dirY > 0 && y > 300 && max - y > 80);
   }
   window.addEventListener("scroll", function () { if (!ticking) { ticking = true; requestAnimationFrame(onScroll); } }, { passive: true });
@@ -315,7 +314,14 @@
     var secIo = new IntersectionObserver(function (es) {
       es.forEach(function (e) {
         if (!e.isIntersecting) return;
-        mbLinks.forEach(function (a) { a.classList.toggle("on", a.getAttribute("data-sec") === e.target.id); });
+        mbLinks.forEach(function (a) {
+          var on = a.getAttribute("data-sec") === e.target.id;
+          a.classList.toggle("on", on);
+          if (on) {  // on narrow screens keep the highlighted link in view inside the bar (never scrolls the page)
+            var nav = a.parentNode;
+            nav.scrollTo({ left: a.offsetLeft - nav.offsetLeft - 8, behavior: motionOn() ? "smooth" : "auto" });
+          }
+        });
       });
     }, { rootMargin: "-45% 0px -50% 0px" });
     mbLinks.forEach(function (a) { var el = document.getElementById(a.getAttribute("data-sec")); if (el) secIo.observe(el); });
@@ -328,6 +334,11 @@
       });
     });
   }
+  var brand = $(".mb-brand");
+  if (brand) brand.addEventListener("click", function (e) {
+    e.preventDefault();
+    window.scrollTo({ top: 0, behavior: motionOn() ? "smooth" : "auto" });
+  });
 
   // ------------------------------------------------------------ confetti
   function confetti(x, y, n) {

@@ -353,12 +353,12 @@ def minibar(d):
     circ = 2 * 3.14159265 * 15
     links = (("roadmap", "Roadmap"), ("activity", "Activity"), ("projects", "Projects"), ("libraries", "Libraries"), ("recent", "Commits"))
     nav = "".join(f'<a href="#{i}" data-sec="{i}">{t}</a>' for i, t in links)
-    return f"""<div class="minibar" aria-hidden="true">
+    return f"""<div class="minibar">
   <div class="mb-in">
-    <a class="mb-brand" href="#top" tabindex="-1"><svg class="mb-ring" viewBox="0 0 40 40"><circle cx="20" cy="20" r="15" class="t"/>
+    <a class="mb-brand" href="#top" aria-label="Back to top: {pct}% of topics covered"><svg class="mb-ring" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="15" class="t"/>
       <circle cx="20" cy="20" r="15" class="f" stroke-dasharray="{circ * pct / 100:.1f} {circ:.1f}" transform="rotate(-90 20 20)"/></svg>
-      <span><b>{pct}% · GenAI program</b><small>{esc(p['owner'])} · week {p['week_now']} of {p['total_weeks']}</small></span></a>
-    <nav class="mb-nav">{nav.replace('<a ', '<a tabindex="-1" ')}</nav>
+      <span><b>{pct}%<span class="mb-long"> · GenAI program</span></b><small>{esc(p['owner'])} · week {p['week_now']} of {p['total_weeks']}</small></span></a>
+    <nav class="mb-nav" aria-label="Sections">{nav}</nav>
   </div>
 </div>"""
 
