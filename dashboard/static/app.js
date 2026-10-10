@@ -17,6 +17,15 @@
     return true;
   }
   function motionOn() { return root.classList.contains("motion"); }
+
+  // GitHub Pages lets browsers reuse a page for up to 10 minutes. If a newer build is live, reload once to show it.
+  var build = document.querySelector('meta[name="build"]');
+  if (build && window.fetch) {
+    fetch("version.txt?t=" + Date.now(), { cache: "no-store" }).then(function (r) { return r.ok ? r.text() : ""; }).then(function (v) {
+      v = v.trim();
+      if (v && v !== build.content && once("reloaded-" + v)) location.reload();
+    }).catch(function () {});
+  }
   function css(name) { return getComputedStyle(root).getPropertyValue(name).trim(); }
 
   // ------------------------------------------------------------ tooltips

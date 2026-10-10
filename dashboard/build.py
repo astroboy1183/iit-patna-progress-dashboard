@@ -380,7 +380,7 @@ def page(d, generated, ver):
     desc = f"Live progress of {p['owner']} in IIT Patna's {p['name']}, rebuilt from code on every push."
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{esc(title)}</title><meta name="description" content="{esc(desc)}">
+<title>{esc(title)}</title><meta name="description" content="{esc(desc)}"><meta name="build" content="__BUILD__">
 <meta property="og:title" content="{esc(title)}"><meta property="og:description" content="{esc(desc)}">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23256abf'/><path d='M8 22l6-7 4 4 6-9' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -438,7 +438,12 @@ def main():
         shutil.copy(src, out / "assets" / f)
         ver[f] = hashlib.sha256(src.read_bytes()).hexdigest()[:10]  # cache-buster: changes whenever the file does
     generated = dt.datetime.now(dt.timezone(dt.timedelta(hours=5, minutes=30))).strftime("%d %b %Y, %H:%M IST")
-    (out / "index.html").write_text(page(data, generated, ver))
+    html_ = page(data, generated, ver)
+    # Build id: changes only when the page content changes (the "Updated …" time is left out), so hourly rebuilds
+    # with nothing new don't make open pages reload. app.js compares it with version.txt to escape stale caches.
+    build_id = hashlib.sha256(html_.replace(generated, "").encode()).hexdigest()[:12]
+    (out / "index.html").write_text(html_.replace("__BUILD__", build_id))
+    (out / "version.txt").write_text(build_id + "\n")
     (out / "data.json").write_text(json.dumps(data, indent=1, ensure_ascii=False))
     (out / ".nojekyll").write_text("")
     t = data["totals"]

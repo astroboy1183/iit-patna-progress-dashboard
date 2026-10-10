@@ -413,7 +413,7 @@ def collect(repo, curriculum_path, today=None):
         "notes": [{"path": f.rel, "week": week_of(f.rel), "words": f.words,
                    "title": f.headings[0][1] if f.headings else PurePosixPath(f.rel).stem} for f in notes],
         "practice": practice,
-        "libraries": lib_counter.most_common(),
+        "libraries": sorted(lib_counter.items(), key=lambda kv: (-kv[1], kv[0])),  # ties by name, so builds are stable
         "head": head,
     }
 
