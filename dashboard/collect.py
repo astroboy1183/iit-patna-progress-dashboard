@@ -1,7 +1,14 @@
 """Read the course repo and work out progress: curriculum evidence, activity, projects and libraries.
 
-Everything here is derived from the repo's tracked files and git history, so the dashboard
-changes only when the code does.
+Everything here is derived from the repo's tracked files and git history, so the dashboard changes
+only when the repo does. Every tracked file is read and given a kind:
+  code    .py files and notebook code cells: imports, patterns, providers, count rules
+  notes   markdown inside a notes/ folder (lecture notes): headings rules
+  docs    other markdown and text, plus notebook markdown cells: headings rules
+  deps    requirements*.txt, pyproject.toml
+  config  .json, .yaml, .toml, dotfiles
+  data    everything else (spreadsheets, CSVs, images)
+`paths` rules match any tracked file.
 """
 
 import ast
@@ -16,6 +23,10 @@ from pathlib import Path, PurePosixPath
 import yaml
 
 CODE_EXT = {".py", ".ipynb"}
+DOC_EXT = {".md", ".markdown", ".rst", ".txt"}
+CONFIG_EXT = {".json", ".yaml", ".yml", ".toml", ".cfg", ".ini"}
+# Evidence order on the page: hands-on code first, then lecture notes, then other docs, READMEs last.
+KIND_RANK = {"code": 0, "notes": 1, "docs": 2, "readme": 3}
 STDLIB = set(sys.stdlib_module_names)
 
 
@@ -26,20 +37,53 @@ def git(repo, *args):
 # ---------------------------------------------------------------- reading code
 
 
-def notebook_code(path):
-    """Code cells of a notebook joined into one string (magics and shell lines removed)."""
+def file_kind(rel):
+    p = PurePosixPath(rel)
+    suffix, name = p.suffix.lower(), p.name.lower()
+    if suffix in CODE_EXT:
+        return "code"
+    if name.startswith("requirements") or name == "pyproject.toml":
+        return "deps"
+    if suffix in DOC_EXT:
+        return "notes" if "notes" in p.parts[:-1] else "docs"
+    if suffix in CONFIG_EXT or name.startswith("."):
+        return "config"
+    return "data"
+
+
+def notebook_parts(path):
+    """(code, markdown) of a notebook: code cells (magics and shell lines removed) and markdown cells."""
     try:
         nb = json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError):
-        return ""
-    cells = []
+        return "", ""
+    code, md = [], []
     for c in nb.get("cells", []):
-        if c.get("cell_type") != "code":
-            continue
         src = c.get("source", "")
         src = "".join(src) if isinstance(src, list) else src
-        cells.append("\n".join(l for l in src.splitlines() if not l.lstrip().startswith(("%", "!"))))
-    return "\n\n".join(cells)
+        if c.get("cell_type") == "code":
+            code.append("\n".join(l for l in src.splitlines() if not l.lstrip().startswith(("%", "!"))))
+        elif c.get("cell_type") == "markdown":
+            md.append(src)
+    return "\n\n".join(code), "\n\n".join(md)
+
+
+def headings_of(text):
+    """(line number, heading text) for each markdown heading, skipping fenced code blocks
+    (where "# ..." is a comment, not a heading)."""
+    out, fence = [], None
+    for n, line in enumerate(text.splitlines(), 1):
+        stripped = line.lstrip()
+        if stripped.startswith(("```", "~~~")):
+            mark = stripped[:3]
+            fence = None if fence == mark else (fence or mark)
+            continue
+        if fence:
+            continue
+        m = re.match(r"#{1,6}\s+(.+?)\s*#*\s*$", line)
+        if m:
+            out.append((n, m.group(1)))
+    return out
 
 
 def imports_of(code):
@@ -56,13 +100,33 @@ def imports_of(code):
     return found
 
 
-class SourceFile:
+class RepoFile:
+    """One tracked file. Only code files have `code` and `imports`; markdown files and notebook
+    markdown cells have `headings`. Spreadsheets and other binary files are not read."""
+
     def __init__(self, repo, rel):
         self.rel = rel
+        self.kind = file_kind(rel)
+        self.code, self.headings, self.words = "", [], 0
         p = repo / rel
-        self.code = notebook_code(p) if rel.endswith(".ipynb") else p.read_text(encoding="utf-8", errors="replace")
-        self.imports = imports_of(self.code)
+        if self.kind == "code" and rel.endswith(".ipynb"):
+            self.code, md = notebook_parts(p)
+            self.headings = [(None, h) for _, h in headings_of(md)]  # cell line numbers don't map to the file
+        elif self.kind == "code":
+            self.code = p.read_text(encoding="utf-8", errors="replace")
+        elif self.kind in ("notes", "docs") and PurePosixPath(rel).suffix.lower() != ".txt":
+            text = p.read_text(encoding="utf-8", errors="replace")
+            self.headings = headings_of(text)
+            self.words = len(text.split())
+        self.imports = imports_of(self.code) if self.code else set()
         self.loc = sum(1 for l in self.code.splitlines() if l.strip() and not l.strip().startswith("#"))
+
+    @property
+    def evidence_kind(self):
+        """Kind shown next to the evidence link: code, notes, docs, or readme for README files."""
+        if self.kind == "docs" and PurePosixPath(self.rel).stem.lower() == "readme":
+            return "readme"
+        return self.kind
 
     def imports_any(self, prefixes):
         """True if any import is one of `prefixes`, a submodule of one, or (for a bare name like
@@ -112,10 +176,8 @@ def path_match(rel, globs):
     return any(glob_regex(g).match(rel) for g in globs)
 
 
-def rule_hits(rule, files, all_paths):
+def rule_hits(rule, files):
     """Return a list of (path, line) evidence for one rule. Empty list = no match."""
-    if "paths" in rule:
-        return [(p, None) for p in all_paths if path_match(p, rule["paths"])]
     hits = []
     for f in files:
         h = file_hit(rule, f)
@@ -133,6 +195,11 @@ def file_hit(rule, f):
             return None
         mods = "|".join(re.escape(m) for m in rule["imports"])
         return (f.rel, f.line_of(rf"^\s*(?:from|import)\s+({mods})"))
+    if "headings" in rule:
+        for line, text in f.headings:
+            if any(re.search(pat, text, re.I) for pat in rule["headings"]):
+                return (f.rel, line)
+        return None
     if "patterns" in rule:
         for pat in rule["patterns"]:
             line = f.line_of(pat)
@@ -155,13 +222,17 @@ def file_hit(rule, f):
     raise ValueError(f"unknown evidence rule: {rule}")
 
 
-def evaluate(evidence, files, all_paths):
+def evaluate(evidence, files):
+    """Evidence for a topic: one entry per matching file, strongest kind first (code, notes, docs, READMEs)."""
+    by_path = {f.rel: f for f in files}
     seen, out = set(), []
     for rule in evidence or []:
-        for path, line in rule_hits(rule, files, all_paths):
+        for path, line in rule_hits(rule, files):
             if path not in seen:
                 seen.add(path)
-                out.append({"path": path, "line": line})
+                kind = by_path[path].evidence_kind
+                out.append({"path": path, "line": line, "kind": kind})
+    out.sort(key=lambda e: KIND_RANK.get(e["kind"], 4))  # stable: rule order kept within a kind
     return out
 
 
@@ -213,7 +284,7 @@ def humanize(name):
                     for w in words if w)
 
 
-def projects(repo, all_paths, sources, commit_list, overrides):
+def projects(repo, all_paths, sources, overrides):
     """A project is a folder that contains a requirements.txt (the course's own convention)."""
     dirs = sorted({str(PurePosixPath(p).parent) for p in all_paths if PurePosixPath(p).name == "requirements.txt"})
     out = []
@@ -249,7 +320,8 @@ def collect(repo, curriculum_path, today=None):
     cur = yaml.safe_load(Path(curriculum_path).read_text())
     today = today or dt.date.today()
     all_paths = [p for p in git(repo, "ls-files").splitlines() if p]
-    sources = [SourceFile(repo, p) for p in all_paths if PurePosixPath(p).suffix in CODE_EXT and (repo / p).exists()]
+    files = [RepoFile(repo, p) for p in all_paths if (repo / p).is_file()]
+    sources = [f for f in files if f.kind == "code"]
 
     commit_list = commits(repo)
     days = [c["day"] for c in commit_list]
@@ -257,15 +329,20 @@ def collect(repo, curriculum_path, today=None):
     start = dt.date.fromisoformat(cur["program"].get("start_date") or first_day)
     total_weeks = cur["program"].get("months", 6) * 26 // 6
     week_now = max(1, min(total_weeks, (today - start).days // 7 + 1))
+    # The repo can be ahead of the calendar (e.g. when start_date is the first commit, not the program start):
+    # never show an earlier week than the highest week_NN folder in the repo.
+    folder_weeks = [int(w) for p in all_paths for w in re.findall(r"(?:^|/)week[_-]?(\d+)(?=/)", p)]
+    week_now = max(week_now, min(total_weeks, max(folder_weeks, default=0)))
 
     modules = []
     for m in cur["modules"]:
         topics = []
         for t in m["topics"]:
-            ev = evaluate(t.get("evidence"), sources, all_paths) if t.get("evidence") else None
-            topics.append({"name": t["name"], "trackable": bool(t.get("evidence")), "evidence": ev or []})
+            ev = evaluate(t.get("evidence"), files) if t.get("evidence") else []
+            topics.append({"name": t["name"], "trackable": bool(t.get("evidence")), "evidence": ev,
+                           "in_code": any(e["kind"] == "code" for e in ev)})
         proj = m.get("project") or {}
-        proj_ev = evaluate(proj.get("evidence"), sources, all_paths) if proj.get("evidence") else []
+        proj_ev = evaluate(proj.get("evidence"), sources) if proj.get("evidence") else []
         trackable = [t for t in topics if t["trackable"]]
         covered = [t for t in trackable if t["evidence"]]
         ratio = len(covered) / len(trackable) if trackable else 0
@@ -292,6 +369,9 @@ def collect(repo, curriculum_path, today=None):
     per_day = Counter(days)
     current_streak, longest_streak = streaks(days, today)
     ext = Counter(PurePosixPath(p).suffix or PurePosixPath(p).name for p in all_paths)
+    kinds = Counter(f.kind for f in files)
+    notes = [f for f in files if f.kind == "notes"]
+    all_topics = [t for m in modules for t in m["topics"]]
     head = git(repo, "rev-parse", "HEAD").strip() if commit_list else ""
 
     return {
@@ -301,6 +381,8 @@ def collect(repo, curriculum_path, today=None):
         "totals": {
             "topics_covered": sum(m["covered"] for m in modules),
             "topics_trackable": sum(m["trackable"] for m in modules),
+            "topics_in_code": sum(t["in_code"] for t in all_topics),
+            "topics_from_notes": sum(bool(t["evidence"]) and not t["in_code"] for t in all_topics),
             "modules_started": sum(m["status"] != "not_started" for m in modules),
             "modules_completed": sum(m["status"] == "completed" for m in modules),
             "projects_built": sum(bool(m["project"]["evidence"]) for m in modules),
@@ -315,12 +397,16 @@ def collect(repo, curriculum_path, today=None):
             "notebooks": ext.get(".ipynb", 0),
             "lines_of_code": sum(s.loc for s in sources),
             "practice_assignments": sum(1 for p in all_paths if "_practice" in PurePosixPath(p).stem),
+            "lecture_notes": len(notes),
+            "notes_words": sum(f.words for f in notes),
+            "files": len(files),
+            "files_by_kind": dict(kinds.most_common()),
             "first_commit": first_day,
             "last_commit": max(days) if days else "",
         },
         "activity": dict(sorted(per_day.items())),
         "commits": commit_list[:10],
-        "projects": projects(repo, all_paths, sources, commit_list, cur.get("projects", {})),
+        "projects": projects(repo, all_paths, sources, cur.get("projects", {})),
         "libraries": lib_counter.most_common(),
         "head": head,
     }

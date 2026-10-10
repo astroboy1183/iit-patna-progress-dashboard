@@ -115,5 +115,91 @@ class CollectTest(unittest.TestCase):
         self.assertIn("openai", self.data["projects"][0]["libraries"])
 
 
+NOTES_CURRICULUM = textwrap.dedent("""
+    program: {name: Test program, institute: Test, months: 6, course_page: x, course_repo: a/b, owner: Me, start_date: "2026-09-28"}
+    modules:
+      - id: M1
+        title: One
+        schedule: Week 1
+        weeks: [1]
+        topics:
+          - name: Responsible AI
+            evidence: [{patterns: ["(?i)guardrail"]}, {headings: ["responsible ai"]}]
+          - name: LoRA
+            evidence: [{imports: [peft]}, {headings: ["\\\\blora\\\\b"]}]
+          - name: Reranking
+            evidence: [{patterns: ["(?i)rerank"]}, {headings: ["rerank"]}]
+          - name: Developer mindset
+            evidence: [{headings: ["developer mindset"]}]
+          - name: Notebook section
+            evidence: [{headings: ["evaluation plan"]}]
+""")
+
+
+class RepoWideTest(unittest.TestCase):
+    """The collector reads every tracked file, not only code."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        repo = cls.tmp.name
+        git(repo, "init", "-q", "-b", "main")
+        git(repo, "config", "user.email", "t@example.com")
+        git(repo, "config", "user.name", "Tester")
+        files = {
+            # A roadmap that mentions reranking in body text: prose must never count as code.
+            "w/week_01/notes/00_roadmap.md": "# Roadmap\n\nYou'll learn RAG, reranking and guardrails.\n",
+            "w/week_01/notes/04_responsible_ai.md": "# Responsible AI\n\n## Guardrails\n",
+            # The heading inside the code fence is a comment, not a heading.
+            "w/week_03/notes/08_tuning.md": "# Fine-tuning\n\n```python\n# LoRA setup\nimport peft\n```\n",
+            "w/week_02/README.md": "# Week 2 · The developer mindset\n",
+            "w/week_02/notes/05_mindset.md": "# The developer mindset in GenAI\n",
+            "w/app.py": "guardrail = True\n",
+            "w/nb.ipynb": json.dumps({"cells": [{"cell_type": "markdown", "source": ["## Evaluation plan\n"]},
+                                                {"cell_type": "code", "source": ["x = 1\n"]}]}),
+            "w/data/calls.csv": "id,text\n1,rerank\n",
+            "w/requirements.txt": "peft\n",
+        }
+        for path, text in files.items():
+            p = Path(repo) / path
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(text)
+            git(repo, "add", path)
+        git(repo, "commit", "-q", "-m", "add files", date="2026-10-01T10:00:00+05:30")
+        cur = Path(cls.tmp.name).parent / "curriculum_notes_test.yaml"
+        cur.write_text(NOTES_CURRICULUM)
+        cls.data = collect.collect(repo, cur, dt.date(2026, 10, 3))
+
+    def topic(self, name):
+        return next(t for t in self.data["modules"][0]["topics"] if t["name"] == name)
+
+    def test_code_evidence_ranks_before_notes(self):
+        ev = self.topic("Responsible AI")["evidence"]
+        self.assertEqual([(e["kind"], e["path"]) for e in ev],
+                         [("code", "w/app.py"), ("notes", "w/week_01/notes/04_responsible_ai.md")])
+        self.assertTrue(self.topic("Responsible AI")["in_code"])
+
+    def test_notes_heading_counts_with_line(self):
+        ev = self.topic("Developer mindset")["evidence"]
+        self.assertEqual([(e["kind"], e["line"]) for e in ev], [("notes", 1), ("readme", 1)])
+        self.assertFalse(self.topic("Developer mindset")["in_code"])
+
+    def test_body_text_and_data_files_never_count(self):
+        self.assertEqual(self.topic("Reranking")["evidence"], [])
+
+    def test_code_fence_comment_is_not_a_heading_and_notes_imports_dont_count(self):
+        self.assertEqual(self.topic("LoRA")["evidence"], [])
+
+    def test_notebook_markdown_headings(self):
+        self.assertEqual(self.topic("Notebook section")["evidence"][0]["path"], "w/nb.ipynb")
+
+    def test_stats_and_week_floor(self):
+        s = self.data["stats"]
+        self.assertEqual(s["lecture_notes"], 4)
+        self.assertEqual(s["files_by_kind"], {"notes": 4, "code": 2, "docs": 1, "data": 1, "deps": 1})
+        self.assertEqual(self.data["totals"]["topics_from_notes"], 1)
+        self.assertEqual(self.data["program"]["week_now"], 3)  # calendar says week 1, repo has week_03
+
+
 if __name__ == "__main__":
     unittest.main()

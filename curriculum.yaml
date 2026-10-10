@@ -8,7 +8,11 @@
 #   same_file: [rules...]          ALL of these rules match within one single file
 #   providers: {any: [...], min: N} one file imports at least N different modules from the list
 #   count:     {pattern: regex, min: N}  one file matches the regex at least N times
-# Topics without `evidence` are concepts the course teaches; they are shown but can't be read from code.
+#   headings:  [regexes]           a markdown heading (lecture notes, docs, READMEs, notebook markdown cells)
+#                                  matches one of these, case-insensitive. Headings only, not body text: the
+#                                  roadmap lecture mentions most of the curriculum in passing.
+# imports/patterns/providers/count only look at code (.py files and notebook code cells), so prose that
+# mentions a library never counts as using it. Topics without `evidence` are shown but never ticked.
 
 program:
   name: Certificate Program in Generative AI & Agentic AI for Developers
@@ -41,14 +45,26 @@ modules:
         evidence:
           - imports: [tiktoken, sentence_transformers]
           - patterns: ["\\.embed_(query|documents)\\(", "embeddings\\.create\\(", "count_tokens"]
+          - headings: ["\\btokeni[sz]ation\\b", "\\bembeddings?\\b", "context windows?"]
       - name: "Responsible AI: bias, harm, safety, guardrails"
         evidence:
           - patterns: ["(?i)guardrail", "(?i)moderations?\\.create"]
+          - headings: ["responsible ai", "\\bguardrails?\\b"]
       - name: Roadmap for developers in GenAI
+        evidence:
+          - headings: ["\\broadmap\\b"]
       - name: "Evolution of AI: ML → deep learning → GenAI"
+        evidence:
+          - headings: ["evolution of (ai|llms|language models)", "history of ai"]
       - name: Traditional AI vs generative AI
+        evidence:
+          - headings: ["traditional (ai|ml)\\b.*\\bvs\\.? generative ai"]
       - name: Transformers explained (self-attention)
+        evidence:
+          - headings: ["self-attention", "\\btransformers?\\b"]
       - name: Pre-trained vs fine-tuned LLMs
+        evidence:
+          - headings: ["how llms are trained", "pre-?trained vs\\.? fine-?tuned", "pre-?training"]
     project:
       name: First GenAI-powered Python script that sends prompts and parses responses
       evidence:
@@ -79,7 +95,10 @@ modules:
       - name: Prompt tuning vs fine-tuning, LoRA / QLoRA
         evidence:
           - imports: [peft, trl, bitsandbytes]
+          - headings: ["prompt tuning vs\\.? fine-?tuning", "\\bq?lora\\b"]
       - name: "Developer mindset: we orchestrate, not train"
+        evidence:
+          - headings: ["developer mindset", "we don.t train,? we orchestrate"]
     project:
       name: Build and compare a simple chatbot across API, open-source and local models
       evidence:
@@ -182,6 +201,8 @@ modules:
         evidence:
           - patterns: ["(?i)reciprocal.?rank", "(?i)\\brrf\\b"]
       - name: Context distillation and hallucination mitigation
+        evidence:
+          - headings: ["context distillation", "hallucination"]
     project:
       name: End-to-end "Chat with your documents" assistant with citations
       evidence:
@@ -211,6 +232,8 @@ modules:
           - imports: [langchain_mcp_adapters]
           - patterns: ["MultiServerMCPClient"]
       - name: "Why agents: where they shine and where they don't"
+        evidence:
+          - headings: ["why agents", "when (not )?to use (an )?agents?"]
     project:
       name: Multi-tool agent that uses both LangChain tools and MCP tools
       evidence:
@@ -260,6 +283,8 @@ modules:
         evidence:
           - paths: ["**/.mcp.json", "**/mcp*.json"]
       - name: Replit Agents
+        evidence:
+          - headings: ["\\breplit\\b"]
     project:
       name: Building and deploying a real GenAI project with a mentor
 
@@ -281,6 +306,8 @@ modules:
               - imports: [mcp, fastmcp]
               - patterns: ["(?i)workflow|pipeline|schedule"]
       - name: Microsoft Copilot stack
+        evidence:
+          - headings: ["\\bcopilot\\b"]
     project:
       name: Domain-specific automation project (finance, marketing, ops)
 
@@ -290,9 +317,17 @@ modules:
     weeks: [22, 23, 24]
     topics:
       - name: GenAI portfolio on GitHub
+        evidence:
+          - headings: ["\\bportfolio\\b"]
       - name: Resume building for GenAI roles
+        evidence:
+          - headings: ["\\bresumes?\\b", "\\bcv\\b"]
       - name: Interview preparation for AI engineering roles
+        evidence:
+          - headings: ["\\binterviews?\\b"]
       - name: Building a personal learning system
+        evidence:
+          - headings: ["learning system"]
     project:
       name: Industry-ready portfolio of GenAI projects
 
