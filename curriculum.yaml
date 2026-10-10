@@ -334,15 +334,15 @@ projects:
   01_Python_Programming:
     title: Python foundations
     description: Lessons and practice assignments covering Python fundamentals, from print() to sets.
-  02_module_1:
-    title: Call-transcript classification and QA evaluation
-    description: LangChain pipeline that classifies customer-support calls and scores tone, resolution and knowledge accuracy with structured outputs.
-  02_module_1/01_API_VS_local:
+  02_genai_program/week_02/01_API_VS_local:
     title: Cloud APIs vs local models
     description: The same prompts through OpenAI, Gemini, Hugging Face and a local Ollama model, compared side by side.
-  02_module_1/02_chatbot:
+  02_genai_program/week_02/02_chatbot:
     title: CLI chatbot with switchable providers
     description: Command-line chatbot whose provider and model come from a config file.
-  02_module_1/03_capstone:
+  02_genai_program/week_02/03_capstone:
     title: Streamlit chat assistant with memory
     description: Web chat UI with conversation history, routing to OpenAI or Gemini from config.
+  02_genai_program/live_sessions/01_call_transcript_qa:
+    title: Call-transcript classification and QA evaluation
+    description: Live-session project. A LangChain pipeline that classifies customer-support calls and scores tone, resolution and knowledge accuracy with structured outputs.
