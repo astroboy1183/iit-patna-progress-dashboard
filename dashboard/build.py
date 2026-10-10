@@ -420,6 +420,12 @@ if(t==="light"||t==="dark")r.setAttribute("data-theme",t);if(c==="ocean"||c==="s
 </body></html>"""
 
 
+def new_tabs(html_):
+    """Every link that leaves the dashboard opens in a new tab, so the dashboard stays open.
+    In-page links (#roadmap, #panel-M2, …) are left alone."""
+    return re.sub(r'<a (?![^>]*\btarget=)([^>]*\bhref="(?!#)[^"]*")', r'<a target="_blank" rel="noopener" \1', html_)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--course", required=True, help="path to a clone of the course repo (full history)")
@@ -438,7 +444,7 @@ def main():
         shutil.copy(src, out / "assets" / f)
         ver[f] = hashlib.sha256(src.read_bytes()).hexdigest()[:10]  # cache-buster: changes whenever the file does
     generated = dt.datetime.now(dt.timezone(dt.timedelta(hours=5, minutes=30))).strftime("%d %b %Y, %H:%M IST")
-    html_ = page(data, generated, ver)
+    html_ = new_tabs(page(data, generated, ver))
     # Build id: changes only when the page content changes (the "Updated …" time is left out), so hourly rebuilds
     # with nothing new don't make open pages reload. app.js compares it with version.txt to escape stale caches.
     build_id = hashlib.sha256(html_.replace(generated, "").encode()).hexdigest()[:12]
