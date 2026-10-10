@@ -87,7 +87,7 @@ def hero(d):
                     f'data-tip="{esc(tip)}" aria-label="{esc(tip)}. Open details"><span>{esc(label)}</span></button>')
     marker = 100 * (now - 0.5) / total
     return f"""
-<header class="hero">
+<header class="hero" id="top">
   <div class="fx" aria-hidden="true"><div class="aurora"></div><div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div></div>
   <canvas class="sky" aria-hidden="true"></canvas>
   <div class="hero-in">
@@ -151,9 +151,6 @@ def tiles(d):
     return (f'<section class="tiles" aria-label="Key numbers. Hover, focus or tap a card to flip it for details.">{cells}</section>')
 
 
-EV_KIND = {"notes": "notes", "docs": "docs", "readme": "README"}
-
-
 def ev_label(ev):
     """Link text for a piece of evidence: the file name, or "lecture 7" for numbered lecture notes."""
     name = ev["path"].split("/")[-1]
@@ -167,72 +164,91 @@ SHORT = {"M1": "Foundations", "M2": "Models & APIs", "M3": "Apps without framewo
          "M10": "Career & portfolio", "CAP": "Capstone"}
 
 
-def stepper(d):
-    out = []
-    for m in d["modules"]:
-        icon_, label = STATUS[m["status"]]
-        name = m["id"] if m["id"] != "CAP" else "★"
-        tip = f'{m["title"]} · {m["covered"]}/{m["trackable"]} topics · {label}'
-        out.append(f'<li class="step {m["status"]}{" current" if m["scheduled_now"] else ""}" style="--k:{len(out)}">'
-                   f'<button type="button" class="stepbtn" data-module="{esc(m["id"])}" data-tip="{esc(tip)}" aria-label="{esc(tip)}. Open details">'
-                   f'<span class="node">{esc(name)}</span><span class="slabel">{esc(SHORT.get(m["id"], m["title"]))}</span></button></li>')
-    return "".join(out)
+SOURCE = {"code": "Code", "notes": "Notes", "docs": "Docs", "readme": "README"}
+
+
+def topic_rows(m, repo, sha):
+    rows = []
+    for k, tp in enumerate(m["topics"]):
+        if tp["evidence"]:
+            ev = tp["evidence"][0]
+            more = f' <span class="more">+{len(tp["evidence"]) - 1} more</span>' if len(tp["evidence"]) > 1 else ""
+            kind = ev["kind"]
+            rows.append(f'<tr class="yes" style="--k:{k}"><td class="tcell"><span class="mark" aria-hidden="true">✓</span>{esc(tp["name"])}</td>'
+                        f'<td><span class="src s-{kind}">{SOURCE.get(kind, kind)}</span></td>'
+                        f'<td class="proof"><a class="ev" href="{esc(blob(repo, ev["path"], ev["line"], sha))}" title="{esc(ev["path"])}">{esc(ev_label(ev))}</a>{more}</td></tr>')
+        else:
+            label = "Not yet" if tp["trackable"] else "Concept"
+            rows.append(f'<tr class="no" style="--k:{k}"><td class="tcell"><span class="mark" aria-hidden="true">○</span>{esc(tp["name"])}</td>'
+                        f'<td><span class="src s-none">—</span></td><td class="proof"><span class="muted">{label}</span></td></tr>')
+    pr = m["project"]
+    foot = ""
+    if pr["name"]:
+        if pr["evidence"]:
+            ev = pr["evidence"][0]
+            foot = (f'<tfoot><tr class="projrow yes"><td colspan="3"><span class="mark" aria-hidden="true">✓</span><b>Project</b> {esc(pr["name"])}'
+                    f' <a class="ev" href="{esc(blob(repo, ev["path"], ev["line"], sha))}" title="{esc(ev["path"])}">{esc(ev["path"].split("/")[-1])}</a></td></tr></tfoot>')
+        else:
+            foot = (f'<tfoot><tr class="projrow"><td colspan="3"><span class="mark" aria-hidden="true">○</span><b>Project</b> '
+                    f'{esc(pr["name"])}</td></tr></tfoot>')
+    return ("<table class=\"ttable\"><thead><tr><th scope=\"col\">Topic</th><th scope=\"col\">Covered by</th>"
+            f"<th scope=\"col\">Proof</th></tr></thead><tbody>{''.join(rows)}</tbody>{foot}</table>")
 
 
 def roadmap(d):
     repo, sha = d["program"]["course_repo"], d["head"] or "main"
-    cards = []
-    for m in d["modules"]:
-        icon, label = STATUS[m["status"]]
+    mods = d["modules"]
+    # the tab shown first: the module scheduled now, else the last one started
+    active = next((m["id"] for m in mods if m["scheduled_now"]), None) or \
+        next((m["id"] for m in reversed(mods) if m["status"] != "not_started"), mods[0]["id"])
+    overview, tabs, panels = [], [], []
+    for k, m in enumerate(mods):
+        icon_, label = STATUS[m["status"]]
         pct = round(100 * m["covered"] / m["trackable"]) if m["trackable"] else 0
-        topics = []
-        for tp in m["topics"]:
-            if tp["evidence"]:
-                ev = tp["evidence"][0]
-                more = f' <span class="more">+{len(tp["evidence"]) - 1} more</span>' if len(tp["evidence"]) > 1 else ""
-                kind = "" if ev["kind"] == "code" else f'<span class="tag k-{ev["kind"]}">{EV_KIND.get(ev["kind"], ev["kind"])}</span>'
-                topics.append(f'<li class="yes" style="--k:{len(topics)}"><span class="mark" aria-hidden="true">✓</span><span class="tname">{esc(tp["name"])}</span>'
-                              f'<span class="evw">{kind}<a class="ev" href="{esc(blob(repo, ev["path"], ev["line"], sha))}" title="{esc(ev["path"])}">{esc(ev_label(ev))}</a>{more}</span></li>')
-            elif tp["trackable"]:
-                topics.append(f'<li class="no" style="--k:{len(topics)}"><span class="mark" aria-hidden="true">○</span><span class="tname">{esc(tp["name"])}</span></li>')
-            else:
-                topics.append(f'<li class="concept" style="--k:{len(topics)}"><span class="mark" aria-hidden="true">·</span><span class="tname">{esc(tp["name"])}</span>'
-                              f'<span class="evw"><span class="tag">concept</span></span></li>')
+        mid = m["id"] if m["id"] != "CAP" else "★"
+        short = SHORT.get(m["id"], m["title"])
         pr = m["project"]
-        if pr["name"]:
-            if pr["evidence"]:
-                ev = pr["evidence"][0]
-                proj = (f'<p class="proj yes"><span class="mark" aria-hidden="true">✓</span> <b>Project:</b> {esc(pr["name"])} '
-                        f'<a class="ev" href="{esc(blob(repo, ev["path"], ev["line"], sha))}">{esc(ev["path"])}</a></p>')
-            else:
-                proj = f'<p class="proj"><span class="mark" aria-hidden="true">○</span> <b>Project:</b> {esc(pr["name"])}</p>'
-        else:
-            proj = ""
-        meter = (f'<div class="meter" role="img" aria-label="{m["covered"]} of {m["trackable"]} topics">'
-                 f'<div class="fill" style="width:{pct}%"></div></div>'
-                 f'<span class="count">{m["covered"]}/{m["trackable"]} topics</span>') if m["trackable"] else '<span class="count">concepts only</span>'
-        now = '<span class="now">Scheduled now</span>' if m["scheduled_now"] else ""
-        open_attr = " open" if m["status"] != "not_started" or m["scheduled_now"] else ""
-        cards.append(f"""
-<details class="module {m['status']}" data-id="{esc(m['id'])}" data-pct="{pct}" style="--k:{len(cards)}"{open_attr}>
-  <summary>
-    <span class="mid">{esc(m['id'] if m['id'] != 'CAP' else '★')}</span>
-    <span class="mtitle">{esc(m['title'])}<span class="sched">{esc(m['schedule'])}</span></span>
-    <span class="status s-{m['status']}"><span aria-hidden="true">{icon}</span> {label}</span>
-    <span class="mmeter">{meter}</span>{now}
-  </summary>
-  <ul class="topics">{''.join(topics)}</ul>
-  {proj}
-</details>""")
+        proj = ('<span class="pmark yes" title="Project built">✓ Built</span>' if pr["evidence"]
+                else '<span class="pmark">—</span>')
+        now = ' <span class="now">Now</span>' if m["scheduled_now"] else ""
+        overview.append(
+            f'<tr class="mrow {m["status"]}" data-id="{esc(m["id"])}" style="--k:{k}">'
+            f'<th scope="row"><a class="mopen" href="#panel-{esc(m["id"])}" data-tab="{esc(m["id"])}">'
+            f'<span class="mid">{esc(mid)}</span><span class="mname">{esc(m["title"])}{now}<small>{esc(m["schedule"])}</small></span></a></th>'
+            f'<td class="c-weeks">{esc(m["schedule"])}</td>'
+            f'<td><span class="status s-{m["status"]}"><span aria-hidden="true">{icon_}</span> <span class="slbl">{label}</span></span></td>'
+            f'<td><div class="mprog"><div class="meter" role="img" aria-label="{m["covered"]} of {m["trackable"]} topics">'
+            f'<div class="fill" style="width:{pct}%"></div></div><span class="count">{m["covered"]}/{m["trackable"]}</span></div></td>'
+            f'<td class="c-proj">{proj}</td></tr>')
+        sel = m["id"] == active
+        tabs.append(f'<button type="button" role="tab" class="mtab {m["status"]}" id="tab-{esc(m["id"])}" aria-controls="panel-{esc(m["id"])}" '
+                    f'aria-selected="{"true" if sel else "false"}" tabindex="{0 if sel else -1}" data-tab="{esc(m["id"])}">'
+                    f'<i class="sdot" aria-hidden="true"></i><b>{esc(mid)}</b><span>{esc(short)}</span></button>')
+        panels.append(f"""
+<section class="mpanel {m['status']}{' active' if sel else ''}" id="panel-{esc(m['id'])}" role="tabpanel" aria-labelledby="tab-{esc(m['id'])}"
+  data-id="{esc(m['id'])}" data-pct="{pct}" data-short="{esc(short)}">
+  <header class="phead">
+    <span class="mid">{esc(mid)}</span>
+    <div class="ptext"><h3 class="ptitle">{esc(m['title'])}</h3><p class="psched">{esc(m['schedule'])} · <span class="pcount">{m['covered']}/{m['trackable']} topics</span></p></div>
+    <span class="status s-{m['status']}"><span aria-hidden="true">{icon_}</span> {label}</span>
+  </header>
+  <div class="twrap">{topic_rows(m, repo, sha)}</div>
+</section>""")
     return f"""
 <section class="block" id="roadmap">
   <h2>Curriculum roadmap</h2>
-  <p class="note">The program's 10 modules and capstone, from the brochure. The whole repo is read on every push: a topic
-  is ticked when my code uses it, or, for theory, when my lecture notes cover it (marked <span class="tag k-notes">notes</span>).
-  Every tick links to the file and line that proves it. "Hands-on done" means the module's project is built and most of
-  its topics are covered.</p>
-  <ol class="stepper" aria-label="Module status overview">{stepper(d)}</ol>
-  <div class="modules">{''.join(cards)}</div>
+  <p class="note">The program's 10 modules and capstone, from the brochure. The whole repo is read on every push: a topic is ticked
+  when my code uses it, or, for theory, when my lecture notes cover it. Every tick links to the file and line that proves it.
+  "Hands-on done" means the module's project is built and most of its topics are covered.</p>
+  <h3 class="sub-h">All modules at a glance</h3>
+  <div class="mtable-wrap"><table class="mtable">
+    <thead><tr><th scope="col">Module</th><th scope="col" class="c-weeks">Schedule</th><th scope="col">Status</th>
+      <th scope="col">Topics</th><th scope="col" class="c-proj">Project</th></tr></thead>
+    <tbody>{''.join(overview)}</tbody>
+  </table></div>
+  <h3 class="sub-h" id="topics-h">Topics in each module</h3>
+  <div class="mtabs-wrap"><div class="mtabs" role="tablist" aria-labelledby="topics-h">{''.join(tabs)}<span class="tab-ink" aria-hidden="true"></span></div></div>
+  <div class="mpanels">{''.join(panels)}</div>
 </section>"""
 
 
@@ -331,6 +347,22 @@ def recent(d):
 </section>"""
 
 
+def minibar(d):
+    p, t = d["program"], d["totals"]
+    pct = round(100 * t["topics_covered"] / t["topics_trackable"]) if t["topics_trackable"] else 0
+    circ = 2 * 3.14159265 * 15
+    links = (("roadmap", "Roadmap"), ("activity", "Activity"), ("projects", "Projects"), ("libraries", "Libraries"), ("recent", "Commits"))
+    nav = "".join(f'<a href="#{i}" data-sec="{i}">{t}</a>' for i, t in links)
+    return f"""<div class="minibar" aria-hidden="true">
+  <div class="mb-in">
+    <a class="mb-brand" href="#top" tabindex="-1"><svg class="mb-ring" viewBox="0 0 40 40"><circle cx="20" cy="20" r="15" class="t"/>
+      <circle cx="20" cy="20" r="15" class="f" stroke-dasharray="{circ * pct / 100:.1f} {circ:.1f}" transform="rotate(-90 20 20)"/></svg>
+      <span><b>{pct}% · GenAI program</b><small>{esc(p['owner'])} · week {p['week_now']} of {p['total_weeks']}</small></span></a>
+    <nav class="mb-nav">{nav.replace('<a ', '<a tabindex="-1" ')}</nav>
+  </div>
+</div>"""
+
+
 def toast(d):
     if not d["commits"]:
         return ""
@@ -359,6 +391,7 @@ if(t==="light"||t==="dark")r.setAttribute("data-theme",t);if(c==="ocean"||c==="s
 </head><body>
 <div class="sprog" aria-hidden="true"></div>
 <div class="amb" aria-hidden="true"><i></i><i></i><i></i></div>
+{minibar(d)}
 {hero(d)}
 <main>
 {tiles(d)}

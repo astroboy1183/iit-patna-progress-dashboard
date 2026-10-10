@@ -8,7 +8,7 @@ A public dashboard of my progress in IIT Patna's **Certificate Program in Genera
 
 ## What it shows
 
-- **Curriculum roadmap:** the program's 10 modules and capstone, from the brochure. The whole course repo is read: a topic is ticked when my code uses it (for example, `import streamlit` ticks "Simple UI with Streamlit or Gradio") or, for theory topics, when my lecture notes cover it, and every tick links to the file and line that proves it. Click a module on the timeline or stepper for a pop-up with its details.
+- **Curriculum roadmap:** the program's 10 modules and capstone, from the brochure. The whole course repo is read: a topic is ticked when my code uses it (for example, `import streamlit` ticks "Simple UI with Streamlit or Gradio") or, for theory topics, when my lecture notes cover it, and every tick links to the file and line that proves it. An overview table lists every module; a tab per module shows its topics as a table (topic, where it's covered, proof). Click a module on the timeline for a pop-up with its details.
 - **Progress:** topics covered, modules started, module projects built, lecture notes, and where I am on the program's 26-week timeline. The stat cards flip over for a breakdown.
 - **Activity:** commits per day as a heatmap, streaks, recent commits.
 - **Projects and libraries:** every folder with its own `requirements.txt`, and the third-party libraries used across my code.
@@ -43,7 +43,7 @@ The program start date defaults to the first commit in the course repo; set `pro
 
 ## Look and feel
 
-Three colour themes (Aurora, Sunset, Ocean), each with light and dark variants, plus ambient light, a starfield hero, flip cards, pop-ups and scroll-in animations. The buttons in the bottom-left corner switch the colour theme, light/dark mode and animations. Animations follow the system's reduced-motion setting unless switched on, and only start once the browser is shown to run them, so the page is always readable without them.
+Three colour themes (Aurora, Sunset, Ocean), each with light and dark variants, plus ambient light, a starfield hero, flip cards, pop-ups, a compact header that appears when scrolling back up, and scroll-linked effects that play forward when scrolling down and rewind when scrolling up (in browsers with scroll-driven animations; others get one-time fade-ins). The buttons in the bottom-left corner switch the colour theme, light/dark mode and animations. Animations follow the system's reduced-motion setting unless switched on, and only start once the browser is shown to run them, so the page is always readable without them. Moving layers only animate transform and opacity and don't resize when a phone's address bar shows or hides, to avoid flicker on mobile.
 
 ## Run it locally
 

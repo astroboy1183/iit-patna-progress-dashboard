@@ -3,6 +3,10 @@
   var root = document.documentElement;
   var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   var canHover = window.matchMedia && window.matchMedia("(hover: hover)").matches;
+  var coarse = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
+  // scroll-driven animations (CSS) where supported; otherwise sections fade up once as they appear
+  var sda = !!(window.CSS && CSS.supports && CSS.supports("animation-timeline: view()"));
+  if (!sda) root.classList.add("no-sda");
   var $ = function (sel, el) { return (el || document).querySelector(sel); };
   var $$ = function (sel, el) { return Array.prototype.slice.call((el || document).querySelectorAll(sel)); };
   // Browser storage is only a per-visitor convenience (theme, palette, motion choice); it may be unavailable.
@@ -39,12 +43,19 @@
   }
 
   // ------------------------------------------------------------ scroll progress + back to top
-  var sprog = $(".sprog"), topBtn = $("#top-btn"), ticking = false;
+  var sprog = $(".sprog"), topBtn = $("#top-btn"), dock = $(".dock"), minibar = $(".minibar"), heroEl = $(".hero");
+  var ticking = false, lastY = window.scrollY, dirY = 0;
   function onScroll() {
     ticking = false;
-    var max = document.documentElement.scrollHeight - window.innerHeight;
-    if (sprog) sprog.style.setProperty("--p", max > 0 ? Math.min(1, window.scrollY / max) : 0);
-    if (topBtn) topBtn.classList.toggle("show", window.scrollY > 600);
+    var y = Math.max(0, window.scrollY), max = document.documentElement.scrollHeight - window.innerHeight;
+    if (sprog) sprog.style.setProperty("--p", max > 0 ? Math.min(1, y / max) : 0);
+    if (topBtn) topBtn.classList.toggle("show", y > 600);
+    // direction with a little hysteresis, so small jiggles (and iOS bounce) don't toggle things
+    var dy = y - lastY;
+    if (Math.abs(dy) > 6) { dirY = dy > 0 ? 1 : -1; lastY = y; }
+    var pastHero = heroEl ? y > heroEl.offsetHeight - 60 : y > 400;
+    if (minibar) minibar.classList.toggle("show", pastHero && dirY < 0);
+    if (dock) dock.classList.toggle("away", dirY > 0 && y > 300 && max - y > 80);
   }
   window.addEventListener("scroll", function () { if (!ticking) { ticking = true; requestAnimationFrame(onScroll); } }, { passive: true });
   onScroll();
@@ -103,12 +114,18 @@
     var ctx = c.getContext("2d"), pts = [], raf = 0, w = 0, h = 0, running = false, visible = true;
     var mouse = { x: -1e4, y: -1e4 }, line = "#ffffff";
     function size() {
-      var dpr = Math.min(2, window.devicePixelRatio || 1);
-      w = hero.clientWidth; h = hero.clientHeight;
+      var nw = hero.clientWidth, nh = hero.clientHeight;
+      if (nw === w && nh === h) return;
+      var dpr = Math.min(coarse ? 1.5 : 2, window.devicePixelRatio || 1);
+      var sx = w ? nw / w : 1, sy = h ? nh / h : 1;
+      w = nw; h = nh;
       c.width = w * dpr; c.height = h * dpr;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      var n = Math.round(Math.min(90, (w * h) / 13000));
-      pts = [];
+      if (pts.length) {  // keep the stars, just stretch them into the new size
+        pts.forEach(function (p) { p.x *= sx; p.y *= sy; });
+        return;
+      }
+      var n = Math.round(Math.min(coarse ? 40 : 90, (w * h) / (coarse ? 16000 : 13000)));
       for (var i = 0; i < n; i++) {
         pts.push({ x: Math.random() * w, y: Math.random() * h, vx: (Math.random() - 0.5) * 0.3, vy: (Math.random() - 0.5) * 0.3,
                    r: Math.random() * 1.6 + 0.5, tw: Math.random() * 6.28 });
@@ -153,8 +170,14 @@
       new IntersectionObserver(function (es) { visible = es[0].isIntersecting; kick(); }).observe(hero);
     }
     document.addEventListener("visibilitychange", kick);
-    var rt;
-    window.addEventListener("resize", function () { clearTimeout(rt); rt = setTimeout(function () { if (running) size(); }, 200); });
+    // Phones fire "resize" as the address bar slides in and out while scrolling. Only a width change (rotation,
+    // window resize) re-sizes the canvas; resizing on every scroll would blank the hero for a frame (flicker).
+    var rt, lastW = window.innerWidth;
+    window.addEventListener("resize", function () {
+      if (window.innerWidth === lastW) return;
+      lastW = window.innerWidth;
+      clearTimeout(rt); rt = setTimeout(function () { if (running) size(); }, 200);
+    });
     return {
       start: function () { if (running) return; running = true; this.recolor(); size(); c.classList.add("on"); kick(); },
       stop: function () { running = false; c.classList.remove("on"); ctx.clearRect(0, 0, w, h); },
@@ -211,14 +234,91 @@
     });
   });
 
-  // ------------------------------------------------------------ module details: cascade topics when opened
-  $$("details.module").forEach(function (d) {
-    d.addEventListener("toggle", function () {
-      if (!d.open || !motionOn()) return;
-      d.classList.add("opening");
-      setTimeout(function () { d.classList.remove("opening"); }, 1200);
+  // ------------------------------------------------------------ module tabs (without JS every panel is shown)
+  var tabs = $$(".mtab"), panelEls = $$(".mpanel"), inkEl = $(".tab-ink"), tablist = $(".mtabs");
+  var tabIds = tabs.map(function (t) { return t.getAttribute("data-tab"); });
+  function placeInk() {
+    var t = $('.mtab[aria-selected="true"]');
+    if (!t || !inkEl) return;
+    inkEl.style.width = t.offsetWidth + "px";
+    inkEl.style.height = t.offsetHeight + "px";
+    inkEl.style.top = t.offsetTop + "px";
+    inkEl.style.transform = "translateX(" + t.offsetLeft + "px)";
+  }
+  function selectTab(id, opts) {
+    opts = opts || {};
+    var i = tabIds.indexOf(id);
+    if (i < 0) return;
+    var prev = tabIds.indexOf(($('.mtab[aria-selected="true"]') || tabs[0]).getAttribute("data-tab"));
+    tabs.forEach(function (t, k) {
+      var on = k === i;
+      t.setAttribute("aria-selected", on ? "true" : "false");
+      t.tabIndex = on ? 0 : -1;
     });
-  });
+    panelEls.forEach(function (p) {
+      var on = p.getAttribute("data-id") === id;
+      p.classList.toggle("active", on);
+      if (on && motionOn() && prev !== i) {
+        p.style.setProperty("--dir", (i > prev ? 40 : -40) + "px");
+        p.classList.remove("enter"); void p.offsetWidth; p.classList.add("enter");
+        setTimeout(function () { p.classList.remove("enter"); }, 1100);
+      }
+    });
+    placeInk();
+    if (tablist) {  // keep the chosen tab in view inside the scrollable strip, without moving the page
+      var t = tabs[i], left = t.offsetLeft - (tablist.clientWidth - t.offsetWidth) / 2;
+      tablist.scrollTo({ left: left, behavior: motionOn() ? "smooth" : "auto" });
+    }
+    if (opts.focus) tabs[i].focus();
+    if (opts.scroll) {
+      var wrap = $(".mtabs-wrap");
+      if (wrap) wrap.scrollIntoView({ behavior: motionOn() ? "smooth" : "auto", block: "start" });
+    }
+  }
+  if (tabs.length) {
+    root.classList.add("tabs-on");
+    tabs.forEach(function (t) { t.addEventListener("click", function () { selectTab(t.getAttribute("data-tab")); }); });
+    tablist.addEventListener("keydown", function (e) {
+      var i = tabIds.indexOf(document.activeElement.getAttribute("data-tab"));
+      if (i < 0) return;
+      var n = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: tabIds.length - 1 }[e.key];
+      if (n === undefined) return;
+      e.preventDefault();
+      selectTab(tabIds[(n + tabIds.length) % tabIds.length], { focus: true });
+    });
+    // overview rows open their module's tab
+    $$(".mrow").forEach(function (r) {
+      r.addEventListener("click", function (e) {
+        e.preventDefault();
+        selectTab(r.getAttribute("data-id"), { scroll: true });
+      });
+    });
+    var fromHash = (location.hash.match(/^#panel-(.+)$/) || [])[1];
+    if (fromHash) selectTab(decodeURIComponent(fromHash));
+    placeInk();
+    window.addEventListener("resize", placeInk);
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(placeInk);
+  }
+
+  // ------------------------------------------------------------ compact header: highlight the section in view
+  var mbLinks = $$(".mb-nav a");
+  if (mbLinks.length && "IntersectionObserver" in window) {
+    var secIo = new IntersectionObserver(function (es) {
+      es.forEach(function (e) {
+        if (!e.isIntersecting) return;
+        mbLinks.forEach(function (a) { a.classList.toggle("on", a.getAttribute("data-sec") === e.target.id); });
+      });
+    }, { rootMargin: "-45% 0px -50% 0px" });
+    mbLinks.forEach(function (a) { var el = document.getElementById(a.getAttribute("data-sec")); if (el) secIo.observe(el); });
+    mbLinks.forEach(function (a) {
+      a.addEventListener("click", function (e) {
+        var el = document.getElementById(a.getAttribute("data-sec"));
+        if (!el) return;
+        e.preventDefault();
+        el.scrollIntoView({ behavior: motionOn() ? "smooth" : "auto", block: "start" });
+      });
+    });
+  }
 
   // ------------------------------------------------------------ confetti
   function confetti(x, y, n) {
@@ -260,16 +360,15 @@
 
   // ------------------------------------------------------------ module pop-up
   var modal = $("#modal"), mcontent = modal && $(".mcontent", modal);
-  var mods = $$("details.module");
+  var mods = panelEls;
   var order = mods.map(function (d) { return d.getAttribute("data-id"); });
   var shortName = {};
-  $$(".stepbtn").forEach(function (b) { shortName[b.getAttribute("data-module")] = $(".slabel", b).textContent; });
+  mods.forEach(function (d) { shortName[d.getAttribute("data-id")] = d.getAttribute("data-short"); });
   var current = -1;
   function fill(i) {
     var d = mods[i], id = order[i];
-    var titleEl = $(".mtitle", d), sched = $(".sched", d).textContent;
-    var title = titleEl.firstChild.textContent.trim();
-    var pct = parseInt(d.getAttribute("data-pct"), 10) || 0, count = $(".count", d).textContent;
+    var title = $(".ptitle", d).textContent, sched = $(".psched", d).textContent;
+    var pct = parseInt(d.getAttribute("data-pct"), 10) || 0;
     var circ = 2 * Math.PI * 40;
     var prev = i > 0 ? "← " + order[i - 1] + " · " + shortName[order[i - 1]] : "";
     var next = i < order.length - 1 ? order[i + 1] + " · " + shortName[order[i + 1]] + " →" : "";
@@ -284,12 +383,9 @@
       '<nav class="mnav"><button type="button" data-go="-1"' + (prev ? "" : " disabled") + '></button>' +
       '<button type="button" data-go="1"' + (next ? "" : " disabled") + '></button></nav>';
     $("#modal-title", mcontent).textContent = title;
-    $(".msched", mcontent).textContent = sched + " · " + count;
-    $(".mhead > div", mcontent).appendChild($(".status", d).cloneNode(true));
-    var body = $(".mbody", mcontent);
-    var topics = $(".topics", d), proj = $(".proj", d);
-    if (topics) body.appendChild(topics.cloneNode(true));
-    if (proj) body.appendChild(proj.cloneNode(true));
+    $(".msched", mcontent).textContent = sched;
+    $(".mhead > div", mcontent).appendChild($(".phead .status", d).cloneNode(true));
+    $(".mbody", mcontent).appendChild($(".twrap", d).cloneNode(true));
     var navs = $$(".mnav button", mcontent);
     navs[0].textContent = prev; navs[1].textContent = next;
     var f = $(".mring .f", mcontent), final = (circ * pct / 100).toFixed(1) + " " + circ.toFixed(1);
@@ -308,11 +404,7 @@
     }
   }
   function openModule(id) {
-    if (!modal || !modal.showModal) {
-      var d = mods[order.indexOf(id)];
-      if (d) { d.open = true; d.scrollIntoView({ behavior: motionOn() ? "smooth" : "auto", block: "start" }); }
-      return;
-    }
+    if (!modal || !modal.showModal) { selectTab(id, { scroll: true }); return; }
     fill(order.indexOf(id));
     modal.classList.remove("closing", "swap");
     if (!modal.open) modal.showModal();
@@ -409,7 +501,7 @@
   function disable() {
     root.classList.remove("motion");
     sky.stop();
-    $$(".block.pending").forEach(function (b) { b.classList.remove("pending"); });
+    $$(".block").forEach(function (b) { b.classList.add("seen"); });
     $$(".tile.peek").forEach(function (t) { t.classList.remove("peek"); });
   }
   label();
@@ -445,20 +537,23 @@
       }
     }
 
-    // sections fade up when scrolled to; everything is revealed after 6 s regardless
+    // sections are marked "seen" when they first scroll into view (meters fill, heatmap ripples, and in browsers
+    // without scroll-driven animations the section fades up); everything is marked after 6 s regardless
     var blocks = $$(".block");
-    function revealBlock(el) {
-      if (!el.classList.contains("pending")) return;
-      el.classList.remove("pending");
-      verify([el], 1600);
+    function seeBlock(el) {
+      if (el.classList.contains("seen")) return;
+      el.classList.add("seen");
+      if (!sda) verify([el], 1600);
     }
     if ("IntersectionObserver" in window) {
       var io = new IntersectionObserver(function (entries) {
-        entries.forEach(function (e) { if (e.isIntersecting) { revealBlock(e.target); io.unobserve(e.target); } });
-      }, { rootMargin: "0px 0px -8% 0px" });
-      blocks.forEach(function (el) { el.classList.add("pending"); io.observe(el); });
+        entries.forEach(function (e) { if (e.isIntersecting) { seeBlock(e.target); io.unobserve(e.target); } });
+      }, { rootMargin: "0px 0px -12% 0px" });
+      blocks.forEach(function (el) { io.observe(el); });
+    } else {
+      blocks.forEach(seeBlock);
     }
-    setTimeout(function () { blocks.forEach(revealBlock); }, 6000);
+    setTimeout(function () { blocks.forEach(seeBlock); }, 6000);
 
     // stat numbers count up, then pop
     $$(".tile .num[data-count]").forEach(function (el, k) {
@@ -485,7 +580,7 @@
     });
 
     // once per visit, the stat cards flip over in a wave to show there's something on the back
-    if (once("tile-wave")) {
+    if (!coarse && once("tile-wave")) {
       $$(".tile").forEach(function (t, k) {
         setTimeout(function () {
           if (!motionOn() || t.matches(":hover")) return;
