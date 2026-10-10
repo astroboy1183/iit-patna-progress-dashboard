@@ -7,6 +7,7 @@ import argparse
 import datetime as dt
 import html
 import json
+import re
 import shutil
 from pathlib import Path
 
@@ -41,6 +42,7 @@ ICONS = {
     "commit": '<circle cx="12" cy="12" r="3.5"/><path d="M3 12h5.5M15.5 12H21"/>',
     "code": '<path d="m8 7-5 5 5 5M16 7l5 5-5 5"/>',
     "check": '<rect x="3.5" y="3.5" width="17" height="17" rx="3"/><path d="m8 12 3 3 5-6"/>',
+    "notes": '<path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5v-15Z"/><path d="M4 20.5A2.5 2.5 0 0 1 6.5 18H20v3H6.5"/><path d="M8 7.5h8M8 11h6"/>',
     "flame": '<path d="M12 21c4 0 7-2.7 7-6.6 0-3.5-2.4-5.6-4-7.4-.3 2-1.3 3.2-2.6 3.8C12.9 7.6 11 5 9 3c.3 3.3-4 5.8-4 11.2C5 18.2 8 21 12 21Z"/>',
 }
 
@@ -60,21 +62,22 @@ def hero(d):
     # progress ring
     r = 54
     circ = 2 * 3.14159265 * r
-    ring = (f'<svg class="ring" viewBox="0 0 140 140" role="img" aria-label="{pct}% of hands-on topics covered">'
+    ring = (f'<svg class="ring" viewBox="0 0 140 140" role="img" aria-label="{pct}% of curriculum topics covered">'
             f'<circle cx="70" cy="70" r="{r}" class="ring-track"/>'
             f'<circle cx="70" cy="70" r="{r}" class="ring-fill" stroke-dasharray="{circ * pct / 100:.1f} {circ:.1f}" '
             f'transform="rotate(-90 70 70)"/>'
             f'<text x="70" y="68" class="ring-num">{pct}%</text><text x="70" y="88" class="ring-lab">topics</text></svg>')
     # journey bar: one segment per module, sized by its scheduled weeks
     segs = []
-    for m in d["modules"]:
+    for i, m in enumerate(d["modules"]):
         w = len(m["weeks"])
         label = m["id"] if m["id"] != "CAP" else "★"
-        segs.append(f'<div class="seg {m["status"]}" style="flex:{w}" title="{esc(m["id"])} · {esc(m["title"])} · {esc(m["schedule"])}">'
+        segs.append(f'<div class="seg {m["status"]}" style="flex:{w};--i:{i}" title="{esc(m["id"])} · {esc(m["title"])} · {esc(m["schedule"])}">'
                     f'<span>{esc(label)}</span></div>')
     marker = 100 * (now - 0.5) / total
     return f"""
 <header class="hero">
+  <div class="blob b1" aria-hidden="true"></div><div class="blob b2" aria-hidden="true"></div><div class="blob b3" aria-hidden="true"></div>
   <div class="hero-in">
     <div class="hero-text">
       <p class="eyebrow">{esc(p['institute'])} · {esc(p['months'])}-month certificate program · learning in public</p>
@@ -100,15 +103,26 @@ def tiles(d):
     items = [
         ("modules", t["modules_started"], "modules started", f"{t['modules_completed']} with hands-on work done"),
         ("project", t["projects_built"], "module projects built", "detected from the code"),
-        ("commit", s["commits"], "commits", f"on {s['active_days']} active days"),
+        ("commit", s["commits"], "commits", f"on {s['active_days']} active days · best streak {s['longest_streak']} day{'s' if s['longest_streak'] != 1 else ''}"),
         ("code", s["lines_of_code"], "lines of code", f"{s['python_files']} Python files · {s['notebooks']} notebook{'s' if s['notebooks'] != 1 else ''}"),
         ("check", s["practice_assignments"], "practice assignments", "solved"),
-        ("flame", s["longest_streak"], "day best streak", f"current streak: {s['current_streak']} day{'s' if s['current_streak'] != 1 else ''}"),
+        ("notes", s["lecture_notes"], "lecture notes", f"{s['notes_words']:,} words · cover {t['topics_from_notes']} theory topics"),
     ]
-    cells = "".join(f'<div class="tile">{icon(ic)}<span class="num" data-count="{n}">{n:,}</span><span class="lab">{esc(l)}</span>'
-                    f'<span class="sub">{esc(sub)}</span></div>' for ic, n, l, sub in items)
+    cells = "".join(f'<div class="tile" style="--i:{k}">{icon(ic)}<span class="num" data-count="{n}">{n:,}</span><span class="lab">{esc(l)}</span>'
+                    f'<span class="sub">{esc(sub)}</span></div>' for k, (ic, n, l, sub) in enumerate(items))
     return f'<section class="tiles" aria-label="Key numbers">{cells}</section>'
 
+
+EV_KIND = {"notes": "notes", "docs": "docs", "readme": "README"}
+
+
+def ev_label(ev):
+    """Link text for a piece of evidence: the file name, or "lecture 7" for numbered lecture notes."""
+    name = ev["path"].split("/")[-1]
+    m = re.match(r"(\d+)_", name)
+    if ev["kind"] == "notes" and m:
+        return f"lecture {int(m.group(1))}"
+    return name
 
 SHORT = {"M1": "Foundations", "M2": "Models & APIs", "M3": "Apps without frameworks", "M4": "LangChain",
          "M5": "RAG", "M6": "Agents & MCP", "M7": "LangGraph", "M8": "GenAI tooling", "M9": "Automation",
@@ -136,8 +150,9 @@ def roadmap(d):
             if tp["evidence"]:
                 ev = tp["evidence"][0]
                 more = f' <span class="more">+{len(tp["evidence"]) - 1} more</span>' if len(tp["evidence"]) > 1 else ""
+                kind = "" if ev["kind"] == "code" else f'<span class="tag k-{ev["kind"]}">{EV_KIND.get(ev["kind"], ev["kind"])}</span>'
                 topics.append(f'<li class="yes"><span class="mark" aria-hidden="true">✓</span><span class="tname">{esc(tp["name"])}</span>'
-                              f'<span class="evw"><a class="ev" href="{esc(blob(repo, ev["path"], ev["line"], sha))}">{esc(ev["path"].split("/")[-1])}</a>{more}</span></li>')
+                              f'<span class="evw">{kind}<a class="ev" href="{esc(blob(repo, ev["path"], ev["line"], sha))}" title="{esc(ev["path"])}">{esc(ev_label(ev))}</a>{more}</span></li>')
             elif tp["trackable"]:
                 topics.append(f'<li class="no"><span class="mark" aria-hidden="true">○</span><span class="tname">{esc(tp["name"])}</span></li>')
             else:
@@ -172,9 +187,10 @@ def roadmap(d):
     return f"""
 <section class="block" id="roadmap">
   <h2>Curriculum roadmap</h2>
-  <p class="note">The program's 10 modules and capstone, from the brochure. A topic is ticked when my code shows it;
-  "concept" topics are taught in lectures and can't be read from code. "Hands-on done" means the module's project is
-  built and most of its hands-on topics appear in my code.</p>
+  <p class="note">The program's 10 modules and capstone, from the brochure. The whole repo is read on every push: a topic
+  is ticked when my code uses it, or, for theory, when my lecture notes cover it (marked <span class="tag k-notes">notes</span>).
+  Every tick links to the file and line that proves it. "Hands-on done" means the module's project is built and most of
+  its topics are covered.</p>
   <ol class="stepper" aria-label="Module status overview">{stepper(d)}</ol>
   <div class="modules">{''.join(cards)}</div>
 </section>"""
@@ -204,7 +220,7 @@ def heatmap(d):
             x, y = left + wk * (cell + gap), top + wd * (cell + gap)
             cls = "future" if future else f"l{level(n)}"
             tip = f"{fmt_date(day.isoformat())}: " + ("in the future" if future else f"{n} commit{'s' if n != 1 else ''}")
-            rects.append(f'<rect class="{cls}" x="{x}" y="{y}" width="{cell}" height="{cell}" rx="3" data-tip="{esc(tip)}"><title>{esc(tip)}</title></rect>')
+            rects.append(f'<rect class="{cls}" style="--d:{wk}" x="{x}" y="{y}" width="{cell}" height="{cell}" rx="3" data-tip="{esc(tip)}"><title>{esc(tip)}</title></rect>')
             if wd == 0 and day.month != last_month:
                 months.append(f'<text class="axis" x="{x}" y="11">{day.strftime("%b")}</text>')
                 last_month = day.month

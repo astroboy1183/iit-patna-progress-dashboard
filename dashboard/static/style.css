@@ -209,6 +209,7 @@ main { max-width: 1120px; margin: 0 auto; padding: 0 24px 64px; position: relati
 .ev:hover { text-decoration: underline; }
 .more, .tag { font-size: 11px; color: var(--ink-3); }
 .tag { border: 1px solid var(--border); border-radius: 999px; padding: 0 7px; }
+.tag.k-notes, .tag.k-docs, .tag.k-readme { margin-right: 6px; color: var(--accent); border-color: var(--accent-soft); background: var(--accent-soft); }
 .proj { margin: 4px 16px 16px 70px; font-size: 14px; color: var(--ink-2); padding: 10px 12px; background: var(--surface-2); border-radius: 8px; }
 
 /* heatmap */
@@ -267,6 +268,79 @@ footer { margin-top: 40px; color: var(--ink-3); font-size: 13px; text-align: cen
 
 /* tooltip */
 .tip { position: fixed; z-index: 10; pointer-events: none; background: var(--tip-bg); color: var(--tip-ink); font-size: 12px; padding: 5px 9px; border-radius: 6px; white-space: nowrap; transform: translate(-50%, -130%); }
+
+
+/* ---------- Ambient + motion ----------
+   Everything below is opt-in: app.js adds .motion to <html> only when scripts run and the
+   visitor hasn't asked for reduced motion, so without JS the page is fully static and visible. */
+
+/* ambient glow behind the whole page */
+body::before {
+  content: ""; position: fixed; inset: -20vmax; z-index: -1; pointer-events: none;
+  background:
+    radial-gradient(40vmax 30vmax at 15% 20%, rgba(42, 120, 214, .07), transparent 60%),
+    radial-gradient(35vmax 30vmax at 85% 70%, rgba(109, 167, 236, .07), transparent 60%);
+}
+@media (prefers-color-scheme: dark) {
+  body::before {
+    background:
+      radial-gradient(40vmax 30vmax at 15% 20%, rgba(42, 120, 214, .14), transparent 60%),
+      radial-gradient(35vmax 30vmax at 85% 70%, rgba(57, 135, 229, .10), transparent 60%);
+  }
+}
+.motion body::before { animation: ambient 26s ease-in-out infinite alternate; }
+@keyframes ambient { to { transform: translate3d(4vmax, -3vmax, 0) rotate(6deg); } }
+
+.motion-probe { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; animation: probe 1ms linear; }
+@keyframes probe { from { opacity: 0; } to { opacity: .01; } }
+
+/* drifting light blobs in the hero */
+.blob { position: absolute; border-radius: 50%; filter: blur(60px); opacity: .45; pointer-events: none; z-index: 0; }
+.b1 { width: 420px; height: 420px; background: #3987e5; top: -160px; right: 8%; }
+.b2 { width: 360px; height: 360px; background: #6da7ec; bottom: -180px; left: -80px; opacity: .3; }
+.b3 { width: 260px; height: 260px; background: #86b6ef; top: 30%; left: 45%; opacity: .18; }
+.motion .b1 { animation: drift1 18s ease-in-out infinite alternate; }
+.motion .b2 { animation: drift2 22s ease-in-out infinite alternate; }
+.motion .b3 { animation: drift3 26s ease-in-out infinite alternate; }
+@keyframes drift1 { to { transform: translate(-120px, 80px) scale(1.15); } }
+@keyframes drift2 { to { transform: translate(160px, -60px) scale(.9); } }
+@keyframes drift3 { to { transform: translate(-90px, -50px) scale(1.25); } }
+.motion .hero::after { animation: dots 40s linear infinite; }
+@keyframes dots { to { background-position: 220px 110px; } }
+
+/* hero entrance */
+@keyframes fadeUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+.motion .hero-text > * { animation: fadeUp .7s cubic-bezier(.2, .7, .2, 1) both; }
+.motion .hero-text > :nth-child(2) { animation-delay: .08s; }
+.motion .hero-text > :nth-child(3) { animation-delay: .16s; }
+.motion .hero-text > :nth-child(4) { animation-delay: .24s; }
+.motion .ring { animation: fadeUp .8s .2s cubic-bezier(.2, .7, .2, 1) both; }
+.ring-fill { transition: stroke-dasharray 1.6s cubic-bezier(.2, .7, .2, 1); }
+
+/* journey segments fill in one after another */
+@keyframes grow { from { transform: scaleX(0); opacity: 0; } to { transform: none; opacity: 1; } }
+.motion .seg { transform-origin: left center; animation: grow .5s cubic-bezier(.2, .7, .2, 1) both; animation-delay: calc(.35s + var(--i, 0) * .07s); }
+.motion .you { animation: fadeUp .5s 1.2s both; }
+.motion .you span { animation: bob 2.8s 1.8s ease-in-out infinite; }
+@keyframes bob { 50% { transform: translateX(-12px) translateY(-3px); } }
+
+/* stat tiles rise in, staggered */
+.motion .tile { animation: fadeUp .6s cubic-bezier(.2, .7, .2, 1) both; animation-delay: calc(.3s + var(--i, 0) * .07s); }
+.tile { transition: transform .2s, box-shadow .2s; }
+.tile:hover { transform: translateY(-3px); }
+
+/* sections fade in as they scroll into view; app.js removes .pending (with a timed fallback) */
+.motion .block { transition: opacity .7s ease, transform .7s cubic-bezier(.2, .7, .2, 1); }
+.motion .block.pending { opacity: 0; transform: translateY(18px); }
+.meter .fill, .lbar span { transition: width 1.1s cubic-bezier(.2, .7, .2, 1); }
+.motion .block.pending .meter .fill, .motion .block.pending .lbar span { width: 0 !important; }
+.motion .heat rect { transition: opacity .4s ease; transition-delay: calc(var(--d, 0) * 18ms); }
+.motion .block.pending .heat rect { opacity: 0; }
+.motion .stepper .node { transition: transform .4s cubic-bezier(.3, 1.6, .5, 1); }
+.motion .block.pending .stepper .node { transform: scale(.4); }
+.step.current .node { animation: none; }
+.motion .step.current .node { animation: halo 2.6s ease-in-out infinite; }
+@keyframes halo { 50% { box-shadow: 0 0 0 7px var(--accent-soft), 0 0 0 9px var(--accent); } }
 
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
