@@ -1,0 +1,65 @@
+name: Build and deploy dashboard
+
+# The dashboard is rebuilt from the course repo and published to GitHub Pages.
+# Triggers:
+#   - repository_dispatch: sent by the course repo on every push (instant updates)
+#   - schedule: hourly fallback, so the page stays current even without the dispatch
+#   - push / workflow_dispatch: changes to the dashboard itself, or a manual run
+on:
+  repository_dispatch:
+    types: [course-updated]
+  schedule:
+    - cron: "23 * * * *"
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the dashboard
+        uses: actions/checkout@v7
+
+      - name: Check out the course repo (full history for the activity stats)
+        uses: actions/checkout@v7
+        with:
+          repository: astroboy1183/iit-patna-certification-course
+          path: course
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests
+        run: python -m unittest discover -s tests
+
+      - name: Build the site
+        run: python dashboard/build.py --course course --out site
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

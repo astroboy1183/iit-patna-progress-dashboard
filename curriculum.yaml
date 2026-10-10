@@ -1,0 +1,348 @@
+# Curriculum of the IIT Patna "Certificate Program in Generative AI & Agentic AI for Developers",
+# taken from the program brochure, mapped to evidence in the course repo.
+#
+# Every hands-on topic has `evidence` rules. A topic is ticked when any rule matches code in the repo:
+#   imports:   [module prefixes]   a .py file or notebook imports one of these (e.g. "langchain" matches langchain_core)
+#   patterns:  [regexes]           a .py file or notebook code cell matches one of these
+#   paths:     [globs]             a tracked file path matches one of these (* = within one folder, ** = any depth)
+#   same_file: [rules...]          ALL of these rules match within one single file
+#   providers: {any: [...], min: N} one file imports at least N different modules from the list
+#   count:     {pattern: regex, min: N}  one file matches the regex at least N times
+# Topics without `evidence` are concepts the course teaches; they are shown but can't be read from code.
+
+program:
+  name: Certificate Program in Generative AI & Agentic AI for Developers
+  institute: IIT Patna
+  partner: USDC Projects India Pvt Ltd
+  months: 6
+  course_page: https://certifications.iitpatna.com/generative-ai-for-developers
+  course_repo: astroboy1183/iit-patna-certification-course
+  owner: Jayanth Appalla
+  # Program start. Defaults to the date of the first commit in the course repo when empty.
+  start_date: ""
+
+modules:
+  - id: M1
+    title: Foundations of Generative AI
+    schedule: Weeks 1–2
+    weeks: [1, 2]
+    topics:
+      - name: Python refresher
+        evidence:
+          - paths: ["01_Python_Programming/*.py"]
+      - name: Jupyter notebooks
+        evidence:
+          - paths: ["**/*.ipynb"]
+      - name: Hugging Face Hub
+        evidence:
+          - imports: [huggingface_hub, transformers]
+          - patterns: ["huggingface\\.co"]
+      - name: Tokens, embeddings and context windows
+        evidence:
+          - imports: [tiktoken, sentence_transformers]
+          - patterns: ["\\.embed_(query|documents)\\(", "embeddings\\.create\\(", "count_tokens"]
+      - name: "Responsible AI: bias, harm, safety, guardrails"
+        evidence:
+          - patterns: ["(?i)guardrail", "(?i)moderations?\\.create"]
+      - name: Roadmap for developers in GenAI
+      - name: "Evolution of AI: ML → deep learning → GenAI"
+      - name: Traditional AI vs generative AI
+      - name: Transformers explained (self-attention)
+      - name: Pre-trained vs fine-tuned LLMs
+    project:
+      name: First GenAI-powered Python script that sends prompts and parses responses
+      evidence:
+        - patterns: ["chat\\.completions\\.create\\(", "\\.generate_content\\(", "messages\\.create\\(", "ollama\\.chat\\("]
+
+  - id: M2
+    title: Working with Models & APIs
+    schedule: Weeks 3–4
+    weeks: [3, 4]
+    topics:
+      - name: Cloud model APIs (OpenAI, Anthropic, Gemini, Mistral)
+        evidence:
+          - imports: [openai, anthropic, google.generativeai, google.genai, mistralai]
+      - name: Hugging Face models (Inference API / Transformers)
+        evidence:
+          - patterns: ["router\\.huggingface\\.co", "api-inference\\.huggingface\\.co", "InferenceClient"]
+          - imports: [transformers]
+      - name: Local LLMs (Ollama, LM Studio, vLLM)
+        evidence:
+          - imports: [ollama, vllm]
+          - patterns: ["localhost:11434", "localhost:1234"]
+      - name: Cost management, prompt budgeting and rate limits
+        evidence:
+          - patterns: ["max_tokens", "max_output_tokens", "(?i)rate.?limit", "\\b429\\b", "ResourceExhausted"]
+      - name: Comparing model behaviour across providers
+        evidence:
+          - providers: {any: [openai, anthropic, google.generativeai, google.genai, mistralai, ollama, requests], min: 2}
+      - name: Prompt tuning vs fine-tuning, LoRA / QLoRA
+        evidence:
+          - imports: [peft, trl, bitsandbytes]
+      - name: "Developer mindset: we orchestrate, not train"
+    project:
+      name: Build and compare a simple chatbot across API, open-source and local models
+      evidence:
+        - providers: {any: [openai, anthropic, google.generativeai, google.genai, mistralai, ollama], min: 2}
+
+  - id: M3
+    title: Building GenAI Apps Without Frameworks
+    schedule: Week 5
+    weeks: [5]
+    topics:
+      - name: Production-style prompt pipelines written by hand
+        evidence:
+          - same_file:
+              - patterns: ["(?i)prompt"]
+              - imports: [openai, anthropic, google.generativeai, google.genai]
+      - name: Conversation memory without frameworks
+        evidence:
+          - patterns: ["session_state\\[[\"']history[\"']\\]", "history\\.append\\(", "messages\\.append\\(\\{\\s*[\"']role[\"']"]
+      - name: Parsing LLM responses reliably (JSON, structured parsing)
+        evidence:
+          - same_file:
+              - imports: [json, pydantic]
+              - patterns: ["json\\.loads\\(", "model_validate", "BaseModel"]
+              - imports: [openai, anthropic, google.generativeai, google.genai, langchain_core]
+      - name: Simple UI with Streamlit or Gradio
+        evidence:
+          - imports: [streamlit, gradio]
+      - name: Error handling, retries and fallbacks
+        evidence:
+          - patterns: ["(?i)retry", "(?i)backoff", "(?i)fallback"]
+          - same_file:
+              - patterns: ["except\\s+\\w*(Error|Exception)"]
+              - imports: [openai, anthropic, google.generativeai, google.genai, ollama, requests]
+    project:
+      name: Minimal chatbot with memory and a UI, using only Python and APIs (no LangChain)
+      evidence:
+        - same_file:
+            - imports: [streamlit, gradio]
+            - patterns: ["history", "messages"]
+
+  - id: M4
+    title: LangChain Essentials & Application Development
+    schedule: Weeks 6–7
+    weeks: [6, 7]
+    topics:
+      - name: "LangChain components: LLMs, prompts, chains, tools, agents"
+        evidence:
+          - imports: [langchain]
+      - name: Prompt templates and few-shot prompting
+        evidence:
+          - patterns: ["PromptTemplate", "FewShot"]
+      - name: Structured output and output parsers
+        evidence:
+          - patterns: ["OutputParser", "with_structured_output"]
+      - name: Sequential and router chains (LCEL runnables)
+        evidence:
+          - patterns: ["\\w+_?prompt\\s*\\|\\s*\\w*llm", "RunnableSequence", "RunnableBranch", "RunnableParallel", "RunnableLambda"]
+      - name: Memory in LangChain
+        evidence:
+          - patterns: ["RunnableWithMessageHistory", "ChatMessageHistory", "ConversationBufferMemory", "MessagesPlaceholder"]
+      - name: LangSmith tracing (optional)
+        evidence:
+          - imports: [langsmith]
+          - patterns: ["LANGCHAIN_TRACING", "LANGSMITH_"]
+    project:
+      name: Multi-step content generation pipeline (e.g. rewrite → summarize → social snippet)
+      evidence:
+        - count: {pattern: "\\w+_chain\\s*=", min: 3}
+
+  - id: M5
+    title: RAG Systems — From Basics to Advanced
+    schedule: Weeks 8–9
+    weeks: [8, 9]
+    topics:
+      - name: Document loaders, text splitters and chunking strategy
+        evidence:
+          - patterns: ["\\w+Loader\\(", "TextSplitter", "(?i)chunk_size"]
+      - name: Embeddings and vector stores (FAISS, Chroma)
+        evidence:
+          - imports: [faiss, chromadb, langchain_chroma, qdrant_client, pinecone]
+          - patterns: ["FAISS\\.", "Chroma\\("]
+      - name: Retrievers (multi-query, contextual compression)
+        evidence:
+          - patterns: ["as_retriever\\(", "MultiQueryRetriever", "ContextualCompressionRetriever"]
+      - name: RAG evaluation
+        evidence:
+          - imports: [ragas]
+          - patterns: ["(?i)recall@", "(?i)\\bmrr\\b", "(?i)faithfulness"]
+      - name: Query rewriting and HyDE
+        evidence:
+          - patterns: ["\\bHyDE\\b", "(?i)hypothetical.?document", "(?i)query.?rewrit"]
+      - name: Hybrid search
+        evidence:
+          - imports: [rank_bm25]
+          - patterns: ["BM25", "EnsembleRetriever"]
+      - name: Two-stage retrieval and reranking
+        evidence:
+          - patterns: ["(?i)rerank", "CrossEncoder"]
+      - name: Multi-source retrieval and fusion
+        evidence:
+          - patterns: ["(?i)reciprocal.?rank", "(?i)\\brrf\\b"]
+      - name: Context distillation and hallucination mitigation
+    project:
+      name: End-to-end "Chat with your documents" assistant with citations
+      evidence:
+        - same_file:
+            - patterns: ["as_retriever\\(|similarity_search", "(?i)source|citation"]
+
+  - id: M6
+    title: Agents, Tools & MCP (Model Context Protocol)
+    schedule: Weeks 10–11
+    weeks: [10, 11]
+    topics:
+      - name: "Tool calling: functions, APIs, custom Python tools"
+        evidence:
+          - patterns: ["@tool\\b", "bind_tools\\(", "tool_calls", "\\btools\\s*=\\s*\\["]
+      - name: Building multi-tool agents
+        evidence:
+          - patterns: ["create_agent\\(", "create_react_agent\\(", "AgentExecutor", "create_tool_calling_agent"]
+      - name: Safe and predictable agent behaviour
+        evidence:
+          - patterns: ["(?i)max_iterations", "(?i)recursion_limit", "(?i)human.?in.?the.?loop", "interrupt\\("]
+      - name: MCP fundamentals and building MCP servers
+        evidence:
+          - imports: [mcp, fastmcp]
+          - patterns: ["FastMCP"]
+      - name: Using MCP inside agent workflows
+        evidence:
+          - imports: [langchain_mcp_adapters]
+          - patterns: ["MultiServerMCPClient"]
+      - name: "Why agents: where they shine and where they don't"
+    project:
+      name: Multi-tool agent that uses both LangChain tools and MCP tools
+      evidence:
+        - same_file:
+            - imports: [langchain_mcp_adapters, mcp]
+            - patterns: ["@tool\\b|create_agent|create_react_agent"]
+
+  - id: M7
+    title: Agentic Workflows with LangGraph + Final Capstone
+    schedule: Week 12
+    weeks: [12]
+    topics:
+      - name: LangGraph basics
+        evidence:
+          - imports: [langgraph]
+      - name: Nodes, edges and state
+        evidence:
+          - patterns: ["StateGraph\\(", "add_node\\(", "add_edge\\("]
+      - name: Conditional, parallel and iterative workflows
+        evidence:
+          - patterns: ["add_conditional_edges\\(", "Send\\("]
+      - name: Using tools inside LangGraph nodes
+        evidence:
+          - patterns: ["ToolNode", "tools_condition"]
+      - name: Streaming and persistence (checkpoints)
+        evidence:
+          - patterns: ["checkpointer", "MemorySaver", "SqliteSaver", "\\.stream\\(", "\\.astream\\("]
+    project:
+      name: Small LangGraph workflow (e.g. plan → retrieve → summarize with checks)
+      evidence:
+        - same_file:
+            - imports: [langgraph]
+            - patterns: ["add_conditional_edges\\(|add_edge\\("]
+
+  - id: M8
+    title: Practical GenAI Tooling & Productivity Ecosystem
+    schedule: Month 4
+    weeks: [13, 14, 15, 16, 17]
+    topics:
+      - name: AI-first coding workflows (Cursor, Windsurf, Claude Code)
+        evidence:
+          - paths: ["**/CLAUDE.md", "**/.cursorrules", "**/.cursor/**", "**/AGENTS.md", "**/.windsurfrules"]
+      - name: Running local GGUF models with LM Studio
+        evidence:
+          - patterns: ["localhost:1234", "(?i)lmstudio", "(?i)\\.gguf"]
+      - name: MCP-based productivity agents
+        evidence:
+          - paths: ["**/.mcp.json", "**/mcp*.json"]
+      - name: Replit Agents
+    project:
+      name: Building and deploying a real GenAI project with a mentor
+
+  - id: M9
+    title: Agentic Ecosystems, Automation Workflows & Applied GenAI
+    schedule: Month 5
+    weeks: [18, 19, 20, 21]
+    topics:
+      - name: Multi-agent orchestration with CrewAI
+        evidence:
+          - imports: [crewai]
+      - name: Automation with n8n
+        evidence:
+          - paths: ["**/*n8n*.json"]
+          - patterns: ["(?i)n8n"]
+      - name: Workflow automation with MCP servers
+        evidence:
+          - same_file:
+              - imports: [mcp, fastmcp]
+              - patterns: ["(?i)workflow|pipeline|schedule"]
+      - name: Microsoft Copilot stack
+    project:
+      name: Domain-specific automation project (finance, marketing, ops)
+
+  - id: M10
+    title: Career Acceleration, Industry Readiness & Portfolio Building
+    schedule: Month 6
+    weeks: [22, 23, 24]
+    topics:
+      - name: GenAI portfolio on GitHub
+      - name: Resume building for GenAI roles
+      - name: Interview preparation for AI engineering roles
+      - name: Building a personal learning system
+    project:
+      name: Industry-ready portfolio of GenAI projects
+
+  - id: CAP
+    title: Capstone Project
+    schedule: 2 weeks
+    weeks: [25, 26]
+    topics:
+      - name: LLMs (cloud and local)
+        evidence:
+          - same_file:
+              - imports: [openai, anthropic, google.generativeai, google.genai, ollama, langchain_openai, langchain_google_genai]
+              - paths: ["*capstone*/**"]
+      - name: RAG
+        evidence:
+          - same_file:
+              - patterns: ["as_retriever\\(|similarity_search|FAISS|Chroma"]
+              - paths: ["*capstone*/**"]
+      - name: Agents and MCP
+        evidence:
+          - same_file:
+              - imports: [mcp, langchain_mcp_adapters, langgraph]
+              - paths: ["*capstone*/**"]
+      - name: A full UI
+        evidence:
+          - same_file:
+              - imports: [streamlit, gradio, fastapi]
+              - paths: ["*capstone*/**"]
+    project:
+      name: Portfolio-ready GenAI app combining LLMs, RAG, agents, MCP, LangGraph and a full UI
+      evidence:
+        - same_file:
+            - imports: [langgraph]
+            - paths: ["*capstone*/**"]
+
+# Friendly titles for project folders (a project is any folder with a requirements.txt).
+# Folders not listed here get a title made from their name.
+projects:
+  01_Python_Programming:
+    title: Python foundations
+    description: Lessons and practice assignments covering Python fundamentals, from print() to sets.
+  02_module_1:
+    title: Call-transcript classification and QA evaluation
+    description: LangChain pipeline that classifies customer-support calls and scores tone, resolution and knowledge accuracy with structured outputs.
+  02_module_1/01_API_VS_local:
+    title: Cloud APIs vs local models
+    description: The same prompts through OpenAI, Gemini, Hugging Face and a local Ollama model, compared side by side.
+  02_module_1/02_chatbot:
+    title: CLI chatbot with switchable providers
+    description: Command-line chatbot whose provider and model come from a config file.
+  02_module_1/03_capstone:
+    title: Streamlit chat assistant with memory
+    description: Web chat UI with conversation history, routing to OpenAI or Gemini from config.
